@@ -1,0 +1,38 @@
+#!/bin/bash
+# tailscale for the install tests (tests/containers.sh): their machines aren't on a tailnet, so this answers as a
+# logged-in Tailscale would, as the user tester@example.com on ferry-test.tail0.ts.net, and remembers tailscale serve.
+# The owner's other devices: an iPhone (100.64.0.2) and an iPad online, a MacBook asleep (an origin the API trusts, but
+# not one to look for Ferry on). tests/client.sh renames this machine 127.0.0.1 with /tmp/fake-tailscale-name, so the
+# app's client can reach it through a tunnel and still name it.
+serve=/tmp/fake-tailscale-serve.json
+name=$(cat /tmp/fake-tailscale-name 2>/dev/null || echo ferry-test.tail0.ts.net)
+(( EUID == 0 )) || echo "$*" >> /tmp/fake-tailscale.log
+case $1 in
+  status)
+    cat <<EOF
+{"BackendState": "Running",
+ "Self": {"DNSName": "$name.", "HostName": "ferry-test", "UserID": 1, "OS": "linux", "Online": true,
+          "TailscaleIPs": ["100.64.0.1"]},
+ "User": {"1": {"LoginName": "tester@example.com"}, "2": {"LoginName": "someone@else.com"}},
+ "Peer": {"p": {"DNSName": "iphone.tail0.ts.net.", "HostName": "localhost", "UserID": 1, "OS": "iOS", "Online": true,
+                "TailscaleIPs": ["100.64.0.2"]},
+          "t": {"DNSName": "ipad.tail0.ts.net.", "HostName": "localhost", "UserID": 1, "OS": "iOS", "Online": true,
+                "TailscaleIPs": ["100.64.0.3"]},
+          "m": {"DNSName": "macbook.tail0.ts.net.", "HostName": "MacBook", "UserID": 1, "OS": "macOS", "Online": false,
+                "TailscaleIPs": ["100.64.0.4"]},
+          "o": {"DNSName": "other.tail0.ts.net.", "HostName": "other", "UserID": 2, "OS": "linux", "Online": true,
+                "TailscaleIPs": ["100.64.0.9"]}}}
+EOF
+    ;;
+  serve)
+    if [[ $2 == status ]]; then
+      cat "$serve" 2>/dev/null || echo '{}'
+    elif [[ ${*: -1} == off ]]; then
+      rm -f "$serve"
+    else
+      echo "{\"Web\": {\"$name:443\": {\"Handlers\": {\"/ferry\": {\"Proxy\": \"http://127.0.0.1:47270\"}}}}}" > "$serve"
+    fi
+    ;;
+  set) ;;
+  *) echo "fake tailscale: $*" >&2; exit 1 ;;
+esac

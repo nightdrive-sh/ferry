@@ -1,0 +1,4 @@
+{"machines": [
+  {"url": "https://nightdrive.tail1.ts.net/ferry/", "name": "Nightdrive", "self": true},
+  {"url": "https://macbook.tail1.ts.net/ferry/", "name": "MacBook"}
+], "push": null}

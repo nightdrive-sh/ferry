@@ -1,0 +1,30 @@
+{
+  "sourceLanguage": "en",
+  "strings": {
+    "PUSH_FALLBACK_TITLE": {
+      "comment": "The notification shown when the phone can't open what the computer sent (the relay's fallback, APNs loc-key)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Ferry"
+          }
+        }
+      }
+    },
+    "PUSH_FALLBACK_BODY": {
+      "comment": "The notification shown when the phone can't open what the computer sent (the relay's fallback, APNs loc-key)",
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Something arrived from a computer running Ferry"
+          }
+        }
+      }
+    }
+  },
+  "version": "1.0"
+}

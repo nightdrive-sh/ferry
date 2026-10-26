@@ -1,0 +1,422 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		FE000173 /* FerryKit in Frameworks */ = {isa = PBXBuildFile; productRef = FE000172; };
+		FE000273 /* FerryKit in Frameworks */ = {isa = PBXBuildFile; productRef = FE000272; };
+		FE000373 /* FerryKit in Frameworks */ = {isa = PBXBuildFile; productRef = FE000372; };
+		FE000381 /* FerryShare.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE0003A1; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		FE000281 /* FerryNotifications.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = FE0002A1; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		FE0000A1 /* Ferry.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ferry.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE0002A1 /* FerryNotifications.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FerryNotifications.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE0003A1 /* FerryShare.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = FerryShare.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		FE0000A2 /* FerryUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FerryUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		FE0000B1 /* Ferry */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (FE0000B3); explicitFileTypes = {}; explicitFolders = (); path = Ferry; sourceTree = "<group>"; };
+		FE0002B1 /* FerryNotifications */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (FE0002B3); explicitFileTypes = {}; explicitFolders = (); path = FerryNotifications; sourceTree = "<group>"; };
+		FE0003B1 /* FerryShare */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (FE0003B3); explicitFileTypes = {}; explicitFolders = (); path = FerryShare; sourceTree = "<group>"; };
+		FE0004B1 /* Shared */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (); explicitFileTypes = {}; explicitFolders = (); path = Shared; sourceTree = "<group>"; };
+		FE0000B2 /* FerryUITests */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (); explicitFileTypes = {}; explicitFolders = (); path = FerryUITests; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		FE0000B3 = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				Ferry.entitlements,
+			);
+			target = FE0000E1;
+		};
+		FE0002B3 = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				FerryNotifications.entitlements,
+			);
+			target = FE0002E1;
+		};
+		FE0003B3 = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				FerryShare.entitlements,
+			);
+			target = FE0003E1;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		FE000291 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (FE000281, FE000381);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FE0000C1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (FE000173); runOnlyForDeploymentPostprocessing = 0; };
+		FE0002C1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (FE000273); runOnlyForDeploymentPostprocessing = 0; };
+		FE0003C1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (FE000373); runOnlyForDeploymentPostprocessing = 0; };
+		FE0000C2 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		FE0000D0 = {isa = PBXGroup; children = (FE0000B1, FE0004B1, FE0002B1, FE0003B1, FE0000B2, FE0000D1); sourceTree = "<group>"; };
+		FE0000D1 /* Products */ = {isa = PBXGroup; children = (FE0000A1, FE0002A1, FE0003A1, FE0000A2); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FE0000E1 /* Ferry */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE0000F1;
+			buildPhases = (FE000101, FE0000C1, FE000111, FE000291);
+			buildRules = ();
+			dependencies = (FE000221, FE000321);
+			fileSystemSynchronizedGroups = (FE0000B1, FE0004B1);
+			name = Ferry;
+			packageProductDependencies = (FE000172);
+			productName = Ferry;
+			productReference = FE0000A1;
+			productType = "com.apple.product-type.application";
+		};
+		FE0000E2 /* FerryUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE0000F2;
+			buildPhases = (FE000102, FE0000C2, FE000112);
+			buildRules = ();
+			dependencies = (FE000121);
+			fileSystemSynchronizedGroups = (FE0000B2);
+			name = FerryUITests;
+			productName = FerryUITests;
+			productReference = FE0000A2;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+		FE0002E1 /* FerryNotifications */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE0002F1;
+			buildPhases = (FE000201, FE0002C1, FE000211);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (FE0002B1);
+			name = FerryNotifications;
+			packageProductDependencies = (FE000272);
+			productName = FerryNotifications;
+			productReference = FE0002A1;
+			productType = "com.apple.product-type.app-extension";
+		};
+		FE0003E1 /* FerryShare */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE0003F1;
+			buildPhases = (FE000301, FE0003C1, FE000311);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (FE0003B1, FE0004B1);
+			name = FerryShare;
+			packageProductDependencies = (FE000372);
+			productName = FerryShare;
+			productReference = FE0003A1;
+			productType = "com.apple.product-type.app-extension";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FE000131 = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2710;
+				LastUpgradeCheck = 2710;
+				TargetAttributes = {
+					FE0000E1 = {CreatedOnToolsVersion = 27.1; };
+					FE0000E2 = {CreatedOnToolsVersion = 27.1; TestTargetID = FE0000E1; };
+					FE0002E1 = {CreatedOnToolsVersion = 27.1; };
+					FE0003E1 = {CreatedOnToolsVersion = 27.1; };
+				};
+			};
+			buildConfigurationList = FE0000F0;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = FE0000D0;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (FE000171);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FE0000D1;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (FE0000E1, FE0002E1, FE0003E1, FE0000E2);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FE000111 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		FE000211 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		FE000311 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		FE000112 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FE000101 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		FE000201 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		FE000301 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		FE000102 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		FE000121 = {isa = PBXTargetDependency; target = FE0000E1; targetProxy = FE000122; };
+		FE000221 = {isa = PBXTargetDependency; target = FE0002E1; targetProxy = FE000222; };
+		FE000321 = {isa = PBXTargetDependency; target = FE0003E1; targetProxy = FE000322; };
+/* End PBXTargetDependency section */
+
+/* Begin PBXContainerItemProxy section */
+		FE000122 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FE000131;
+			proxyType = 1;
+			remoteGlobalIDString = FE0000E1;
+			remoteInfo = Ferry;
+		};
+		FE000222 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FE000131;
+			proxyType = 1;
+			remoteGlobalIDString = FE0002E1;
+			remoteInfo = FerryNotifications;
+		};
+		FE000322 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = FE000131;
+			proxyType = 1;
+			remoteGlobalIDString = FE0003E1;
+			remoteInfo = FerryShare;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin XCBuildConfiguration section */
+		FE000141 /* Debug (project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)");
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		FE000142 /* Release (project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		FE000151 /* Debug (app) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Ferry/Ferry.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Ferry/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FE000152 /* Release (app) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = Ferry/Ferry.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Ferry/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		FE000161 /* Debug (UI tests) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Ferry;
+			};
+			name = Debug;
+		};
+		FE000162 /* Release (UI tests) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.uitests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = Ferry;
+			};
+			name = Release;
+		};
+		FE000251 /* Debug (notifications) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FerryNotifications/FerryNotifications.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FerryNotifications/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.notifications;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FE000252 /* Release (notifications) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = FerryNotifications/FerryNotifications.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FerryNotifications/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.notifications;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		FE000351 /* Debug (share) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				CODE_SIGN_ENTITLEMENTS = FerryShare/FerryShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FerryShare/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		FE000352 /* Release (share) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GENERATE_ASSET_SYMBOLS = NO;
+				CODE_SIGN_ENTITLEMENTS = FerryShare/FerryShare.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = FerryShare/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/Frameworks", "@executable_path/../../Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.share;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FE0000F0 = {isa = XCConfigurationList; buildConfigurations = (FE000141, FE000142); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		FE0000F1 = {isa = XCConfigurationList; buildConfigurations = (FE000151, FE000152); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		FE0002F1 = {isa = XCConfigurationList; buildConfigurations = (FE000251, FE000252); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		FE0003F1 = {isa = XCConfigurationList; buildConfigurations = (FE000351, FE000352); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		FE0000F2 = {isa = XCConfigurationList; buildConfigurations = (FE000161, FE000162); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		FE000171 /* XCLocalSwiftPackageReference "../FerryKit" */ = {isa = XCLocalSwiftPackageReference; relativePath = ../FerryKit; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FE000172 /* FerryKit */ = {isa = XCSwiftPackageProductDependency; productName = FerryKit; };
+		FE000272 /* FerryKit */ = {isa = XCSwiftPackageProductDependency; productName = FerryKit; };
+		FE000372 /* FerryKit */ = {isa = XCSwiftPackageProductDependency; productName = FerryKit; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = FE000131;
+}

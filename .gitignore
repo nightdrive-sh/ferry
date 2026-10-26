@@ -1,0 +1,12 @@
+.build/
+.swiftpm/
+ios/build/
+macos/build/
+DerivedData/
+ios/.env
+.superpowers/
+.DS_Store
+xcuserdata/
+__pycache__/
+linux/build/
+docs/superpowers/

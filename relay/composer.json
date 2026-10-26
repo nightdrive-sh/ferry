@@ -1,0 +1,25 @@
+{
+    "name": "nightdrive/ferry-relay",
+    "description": "Ferry's push relay: passes a computer's encrypted notification on to the phone through APNs",
+    "type": "project",
+    "license": "MIT",
+    "require": {
+        "php": ">=8.4",
+        "ext-curl": "*",
+        "ext-openssl": "*",
+        "ext-pdo_sqlite": "*"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^12"
+    },
+    "autoload": {
+        "classmap": [
+            "src/"
+        ]
+    },
+    "autoload-dev": {
+        "classmap": [
+            "tests/"
+        ]
+    }
+}

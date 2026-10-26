@@ -1,0 +1,5 @@
+{"computer": "Nightdrive", "items": [
+  {"id": "b5e1ff25354e", "to": "phone", "kind": "text", "time": 1792398788.298958, "text": "801566"},
+  {"id": "3cbf3529eee7", "to": "phone", "kind": "file", "time": 1792398911.4235609, "name": "night-waves.png", "size": 5696605, "type": "image/png"},
+  {"id": "91c9c849298b", "to": "computer", "kind": "text", "time": 1792396485.0374475, "text": "611811", "from": "iphone", "seen": true}
+], "keep": 7, "idle": 0, "push": "BIiSu5wwuO2KQjxYvu3RFp9f5xyMtXyjrGTM30un9TkqTKYkMpTpMZz"}

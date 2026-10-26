@@ -1,0 +1,212 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		FE100173 /* FerryServer in Frameworks */ = {isa = PBXBuildFile; productRef = FE100172; };
+		FE100174 /* FerryKit in Frameworks */ = {isa = PBXBuildFile; productRef = FE100175; };
+		FE100176 /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = FE100178; };
+		FE100201 /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = FE100211; };
+		FE100202 /* Colors.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = FE100212; };
+		FE100203 /* JetBrainsMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FE100213; };
+		FE100204 /* JetBrainsMono-Medium.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FE100214; };
+		FE100205 /* JetBrainsMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = FE100215; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		FE100211 /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		FE100212 /* Colors.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Colors.xcassets; sourceTree = "<group>"; };
+		FE100213 /* JetBrainsMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fonts/JetBrainsMono-Regular.ttf"; sourceTree = "<group>"; };
+		FE100214 /* JetBrainsMono-Medium.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fonts/JetBrainsMono-Medium.ttf"; sourceTree = "<group>"; };
+		FE100215 /* JetBrainsMono-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Fonts/JetBrainsMono-Bold.ttf"; sourceTree = "<group>"; };
+		FE100216 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		FE1000A1 /* Ferry.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Ferry.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		FE1000B1 /* Ferry */ = {isa = PBXFileSystemSynchronizedRootGroup; exceptions = (); explicitFileTypes = {}; explicitFolders = (); path = Ferry; sourceTree = "<group>"; };
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FE1000C1 = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (FE100173, FE100174, FE100176); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		FE1000D0 = {isa = PBXGroup; children = (FE1000B1, FE100216, FE100221, FE1000D1); sourceTree = "<group>"; };
+		/* The iOS app's theme, colours and fonts, used in place: one Theme for both apps */
+		FE100221 /* Shared */ = {isa = PBXGroup; children = (FE100211, FE100212, FE100213, FE100214, FE100215); name = Shared; path = ../ios/Shared; sourceTree = "<group>"; };
+		FE1000D1 /* Products */ = {isa = PBXGroup; children = (FE1000A1); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		FE1000E1 /* Ferry */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = FE1000F1;
+			buildPhases = (FE100101, FE1000C1, FE100111);
+			buildRules = ();
+			dependencies = ();
+			fileSystemSynchronizedGroups = (FE1000B1);
+			name = Ferry;
+			packageProductDependencies = (FE100172, FE100175, FE100178);
+			productName = Ferry;
+			productReference = FE1000A1;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		FE100131 = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2710;
+				LastUpgradeCheck = 2710;
+				TargetAttributes = {
+					FE1000E1 = {CreatedOnToolsVersion = 27.1; };
+				};
+			};
+			buildConfigurationList = FE1000F0;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base);
+			mainGroup = FE1000D0;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (FE100171, FE100177);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = FE1000D1;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (FE1000E1);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		FE100111 = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (FE100202, FE100203, FE100204, FE100205); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		FE100101 = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (FE100201); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		FE100141 /* Debug (project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = ("DEBUG=1", "$(inherited)");
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		FE100142 /* Release (project) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				MACOSX_DEPLOYMENT_TARGET = 26.0;
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		FE100151 /* Debug (app) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				ENABLE_HARDENED_RUNTIME = YES;
+				FERRY_FEED_URL = "https://nightdrive.sh/ferry/appcast.xml";
+				FERRY_UPDATE_CHANNEL = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Ferry;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.mac;
+				PRODUCT_NAME = Ferry;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Debug;
+		};
+		FE100152 /* Release (app) */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "Developer ID Application";
+				OTHER_CODE_SIGN_FLAGS = "--timestamp";
+				CODE_SIGN_STYLE = Manual;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 279G2UNHPN;
+				ENABLE_HARDENED_RUNTIME = YES;
+				FERRY_FEED_URL = "https://nightdrive.sh/ferry/appcast.xml";
+				FERRY_UPDATE_CHANNEL = "";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = Ferry;
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.utilities";
+				INFOPLIST_KEY_LSUIElement = YES;
+				LD_RUNPATH_SEARCH_PATHS = ("$(inherited)", "@executable_path/../Frameworks");
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fi.feature.ferry.mac;
+				PRODUCT_NAME = Ferry;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		FE1000F0 = {isa = XCConfigurationList; buildConfigurations = (FE100141, FE100142); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+		FE1000F1 = {isa = XCConfigurationList; buildConfigurations = (FE100151, FE100152); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release; };
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		FE100171 /* XCLocalSwiftPackageReference "../FerryKit" */ = {isa = XCLocalSwiftPackageReference; relativePath = ../FerryKit; };
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		FE100177 /* XCRemoteSwiftPackageReference "Sparkle" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/sparkle-project/Sparkle";
+			requirement = {kind = upToNextMajorVersion; minimumVersion = 2.10.0; };
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		FE100172 /* FerryServer */ = {isa = XCSwiftPackageProductDependency; productName = FerryServer; };
+		FE100175 /* FerryKit */ = {isa = XCSwiftPackageProductDependency; productName = FerryKit; };
+		FE100178 /* Sparkle */ = {isa = XCSwiftPackageProductDependency; package = FE100177; productName = Sparkle; };
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = FE100131;
+}

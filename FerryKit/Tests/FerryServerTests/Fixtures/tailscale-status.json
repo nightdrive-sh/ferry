@@ -1,0 +1,21 @@
+{
+ "Version": "1.102.2",
+ "BackendState": "Running",
+ "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::1"],
+ "Self": {"ID": "n1", "HostName": "Jari - MacBook", "DNSName": "macbook.tail1234.ts.net.", "OS": "macOS",
+          "UserID": 32994022419854563, "TailscaleIPs": ["100.64.0.1", "fd7a:115c:a1e0::1"], "Online": true},
+ "Peer": {
+  "nodekey:a": {"ID": "n2", "HostName": "nightdrive", "DNSName": "nightdrive.tail1234.ts.net.", "OS": "linux",
+                "UserID": 32994022419854563, "TailscaleIPs": ["100.64.0.2"], "Online": true},
+  "nodekey:b": {"ID": "n3", "HostName": "studio", "DNSName": "studio.tail1234.ts.net.", "OS": "macOS",
+                "UserID": 32994022419854563, "TailscaleIPs": ["100.64.0.3"], "Online": false},
+  "nodekey:c": {"ID": "n4", "HostName": "localhost", "DNSName": "iphone.tail1234.ts.net.", "OS": "iOS",
+                "UserID": 32994022419854563, "TailscaleIPs": ["100.64.0.4"], "Online": true},
+  "nodekey:d": {"ID": "n5", "HostName": "stranger", "DNSName": "stranger.tail1234.ts.net.", "OS": "linux",
+                "UserID": 7, "TailscaleIPs": ["100.64.0.5"], "Online": true}
+ },
+ "User": {
+  "32994022419854563": {"ID": 32994022419854563, "LoginName": "jari@example.com", "DisplayName": "Jari"},
+  "7": {"ID": 7, "LoginName": "other@example.com", "DisplayName": "Other"}
+ }
+}

@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Merged with the keys Xcode generates. Sparkle's: the feed every copy handed out will ask, and the public half of
+     Ferry's EdDSA key, which every update must be signed with (docs/mac-releases.md). -->
+<plist version="1.0">
+<dict>
+	<key>SUFeedURL</key>
+	<string>$(FERRY_FEED_URL)</string>
+	<key>SUPublicEDKey</key>
+	<string>HGJ2dREzwthIx98jJIPzJinCtMHmT1xY/xEtl1uXam8=</string>
+	<key>SUEnableAutomaticChecks</key>
+	<true/>
+	<key>FerryUpdateChannel</key>
+	<string>$(FERRY_UPDATE_CHANNEL)</string>
+</dict>
+</plist>

@@ -1,0 +1,14 @@
+# Ferry's server: the page and the API on 127.0.0.1 only, which tailscale serve publishes on the tailnet. `ferry enable`
+# copies this to ~/.config/systemd/user with ExecStart naming its own copy of ferry, and starts it.
+# With the user's session rather than the desktop's, so it also runs on a computer without one: desktop_env() finds the
+# desktop when the clipboard or a notification needs it.
+[Unit]
+Description=Ferry (a mailbox between your devices over Tailscale)
+
+[Service]
+ExecStart=%h/.local/bin/ferry run
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
