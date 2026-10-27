@@ -2,7 +2,7 @@
 
 A mailbox between your devices, over [Tailscale](https://tailscale.com).
 
-Send texts, links, photos, files and the clipboard between your phone and your computers. Copy a code on the phone, press Send Clipboard, paste it on the computer. What you send waits in the box until the other device picks it up, and the phone is notified when a computer sends it something.
+Send texts, links, photos, files and the clipboard between your phone and your computers. Copy a code on the phone, press Send Clipboard, paste it on the computer. What a computer sends waits in its box until your phone or another computer picks it up, and the phone is notified when a computer sends it something.
 
 Tailscale connects the devices, encrypts the traffic and keeps Ferry off the internet. Each computer answers only its owner, and only on the tailnet (`tailscale serve`, not Funnel). Your texts and files never pass through a server of ours: only a notification does, encrypted for the phone, on its way to Apple. Ferry trusts everyone who can use the computer it runs on, so it suits a computer that is yours alone. A computer's tailnet name shows in public certificate logs, as every Tailscale HTTPS name does.
 
@@ -23,7 +23,7 @@ You need Tailscale on every device, signed in as the same user, with **MagicDNS 
 ## On Linux
 
 ```sh
-curl -fsSL https://github.com/nightdrive-sh/ferry/releases/latest/download/install.sh | bash
+curl -fsSL https://nightdrive.sh/ferry/install | bash
 ```
 
 The script ([`linux/install.sh`](linux/install.sh), meant to be read) installs what Ferry uses with apt, dnf or pacman (Ubuntu 24.04 and Debian 13 or later, Fedora, Arch), puts Ferry in `~/.local/lib/ferry` with the `ferry` command in `~/.local/bin`, and starts it as a systemd user service, `ferry.service`, published on the tailnet with `tailscale serve` at `https://<computer>.<tailnet>.ts.net/ferry/`. Run again, it updates Ferry. `--beta` takes pre-releases too, `--from linux` installs a checkout's `linux/` folder instead of downloading, and `--no-tray` leaves out the tray icon.

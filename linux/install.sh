@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Installs Ferry on this Linux computer for you (not system-wide), or updates it, and starts it:
 #
-#   curl -fsSL https://github.com/nightdrive-sh/ferry/releases/latest/download/install.sh | bash
+#   curl -fsSL https://nightdrive.sh/ferry/install | bash   (a redirect to the latest release's install.sh)
 #
 # What it does, in order:
 #   1. Installs what Ferry uses with the distribution's package manager (apt, dnf or pacman, through sudo), only what
