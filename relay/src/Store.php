@@ -8,8 +8,8 @@ use PDO;
 
 /**
  * Everything the relay keeps: the addresses (id → APNs token, its environment, the computer's VAPID key, the secret's
- * hash) and rate counters. No content and no senders: an IP appears only as a salted hash in a counter, pruned as its
- * window ends.
+ * hash) and rate counters. No content and no senders: an IP appears only as a salted hash in a counter, pruned with the
+ * next request once its window ends (the uptime monitor's /health makes one every few minutes).
  */
 final class Store
 {
@@ -57,13 +57,19 @@ final class Store
     public function hit(string $key, int $seconds, int $now): int
     {
         $window = intdiv($now, $seconds);
-        $this->pdo->prepare('DELETE FROM counters WHERE expires <= ?')->execute([$now]);
+        $this->prune($now);
         $this->pdo->prepare('INSERT INTO counters (key, window, count, expires) VALUES (?, ?, 1, ?)
                              ON CONFLICT (key, window) DO UPDATE SET count = count + 1')
             ->execute([$key, $window, ($window + 1) * $seconds]);
         $q = $this->pdo->prepare('SELECT count FROM counters WHERE key = ? AND window = ?');
         $q->execute([$key, $window]);
         return (int) $q->fetchColumn();
+    }
+
+    /** Deletes the counters whose window has ended. */
+    public function prune(int $now): void
+    {
+        $this->pdo->prepare('DELETE FROM counters WHERE expires <= ?')->execute([$now]);
     }
 
     /** Throws when the database can't be read. */

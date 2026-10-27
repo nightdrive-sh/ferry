@@ -40,6 +40,9 @@ final class Relay
                     return Response::text(405, 'Method not allowed');
                 }
                 $this->store->check();
+                // The monitor calls this every few minutes, so an IP's counter goes soon after its hour even when
+                // nothing else comes in (the privacy policy says within about an hour).
+                $this->store->prune(($this->now)());
                 return Response::text(200, 'ok');
             }
             if ($r->path === '/v1/register' && $r->method === 'POST') {

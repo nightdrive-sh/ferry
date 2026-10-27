@@ -8,7 +8,8 @@ key can't be given to every computer, so the relay holds it, and passes on what 
   VAPID key, exactly what it would send a browser's push service.
 - The relay checks the signature, size and rate, and hands the encrypted bytes to APNs. The app's notification extension
   decrypts them.
-- `GET /health` answers `200 ok` when PHP and the database work, for the uptime monitor.
+- `GET /health` answers `200 ok` when PHP and the database work, for the uptime monitor, and deletes the rate counters
+  whose window has ended.
 
 It keeps only `address → APNs token, environment, VAPID key, the secret's hash` and rate counters (IPs as salted hashes):
 no content, and nothing expires until the app deletes the address or Apple says its token is dead. Feature Design Oy runs
