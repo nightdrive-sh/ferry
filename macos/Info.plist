@@ -1,7 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Merged with the keys Xcode generates. Sparkle's: the feed every copy handed out will ask, and the public half of
-     Ferry's EdDSA key, which every update must be signed with (docs/mac-releases.md). -->
+     Ferry's EdDSA key, which every update must be signed with (docs/mac-releases.md). The copyright line is the About
+     window's, the same as LICENSE. -->
 <plist version="1.0">
 <dict>
 	<key>SUFeedURL</key>
@@ -12,5 +13,7 @@
 	<true/>
 	<key>FerryUpdateChannel</key>
 	<string>$(FERRY_UPDATE_CHANNEL)</string>
+	<key>NSHumanReadableCopyright</key>
+	<string>Copyright © 2026 Nightdrive contributors</string>
 </dict>
 </plist>
