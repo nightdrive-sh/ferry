@@ -15,12 +15,6 @@ import look  # noqa: E402
 
 
 class Words(unittest.TestCase):
-    def test_device_rows(self):   # the Devices page: the ones to forget, then the forgotten ones to bring back
-        data = {"devices": [{"id": "studio"}, {"id": "iphone"}], "forgotten": [{"id": "ipad"}]}
-        self.assertEqual([(d["id"], f) for d, f in look.device_rows(data)],
-                         [("studio", False), ("iphone", False), ("ipad", True)])
-        self.assertEqual(look.device_rows({"devices": []}), [])   # a ferry list --json from before forgetting
-
     def test_meta_line(self):
         item = {"kind": "file", "size": 5_700_000, "time": 1000, "from": "iphone"}
         self.assertEqual(look.meta(item, now=1000 + 720), "5.7 MB · 12 min · iphone")

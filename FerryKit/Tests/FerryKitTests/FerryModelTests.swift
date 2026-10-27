@@ -61,6 +61,13 @@ actor FakeBackend: FerryBackend {
         try check(machine, "unforget \(device)")
         forgotten.remove(device)
     }
+    /// Computers whose Ferry is from before api/unforget's self: they answer it 400
+    var noSelf: Set<URL> = []
+    func setNoSelf(_ urls: Set<URL>) { noSelf = urls }
+    func unforgetSelf(on machine: URL) async throws {
+        try check(machine, "unforget self")
+        if noSelf.contains(machine) { throw FerryError.refused(status: 400, message: "Not a device's tailnet name") }
+    }
     func send(_ payload: SendPayload, to machine: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
         try check(machine, "send")
         progress(1)
@@ -1055,7 +1062,7 @@ func tempCache() -> FileCache {
         #expect(m.list.machines.contains { $0.url == mini })
     }
 
-    /// Once the computers agree, Bring Back on one of them brings it back to the phone at once
+    /// Once the computers agree, its coming back on them (its Ferry started again) brings it back to the phone at once
     @Test func agreedItComesBackWhenBroughtBack() async throws {
         let fake = FakeBackend()
         await fake.set(nd, name: "Nightdrive", idle: 0)
@@ -1069,6 +1076,37 @@ func tempCache() -> FileCache {
         await fake.setForgotten([])
         await m.refreshMachines()
         #expect(m.list.machines.map(\.url).sorted { $0.absoluteString < $1.absoluteString } == [mac, nd])
+    }
+
+    /// Setting up with a computer (its QR code, its name) is the phone added with Add Device: it brings itself back on
+    /// that computer and on every other that answers, in case it was forgotten (docs/protocol.md › Forgetting a device)
+    @Test func settingUpBringsThePhoneItselfBack() async throws {
+        let fake = FakeBackend()
+        await fake.set(nd, name: "Nightdrive", idle: 0)
+        await fake.set(mac, name: "MacBook", idle: 0)
+        await fake.set(mini, name: "Mini", idle: 0)
+        await fake.setFound([MachineInfo(url: nd, name: "Nightdrive", isSelf: true), MachineInfo(url: mac, name: "MacBook")])
+        await fake.setNoSelf([mac])   // a Ferry from before: its 400 changes nothing
+        let m = try model(fake, machines: [(mini, "Mini")])
+        await fake.setDown([mini])
+        #expect(m.setUps == 0)
+        try await m.setUp(nd)
+        let calls = await fake.calls.filter { $0.hasPrefix("unforget self") }.sorted()
+        #expect(calls == ["unforget self macbook.tail1.ts.net", "unforget self nightdrive.tail1.ts.net"])   // not the one asleep
+        #expect(m.setUps == 1)
+        #expect(m.list.machines.count == 3)
+        // Scanned again: added again
+        try await m.setUp(nd)
+        #expect(m.setUps == 2)
+    }
+
+    @Test func aSetUpThatFailsIsNoAdding() async throws {
+        let fake = FakeBackend()
+        await fake.setDown([nd])
+        let m = try model(fake, machines: [])
+        await #expect(throws: FerryError.self) { try await m.setUp(nd) }
+        #expect(m.setUps == 0)
+        #expect(await fake.calls.filter { $0.hasPrefix("unforget self") }.isEmpty)
     }
 
     /// Adding a computer by hand (its QR code, its name) is bringing it back: otherwise it would leave the list the moment

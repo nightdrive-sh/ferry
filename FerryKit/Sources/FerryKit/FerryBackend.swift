@@ -22,6 +22,9 @@ public protocol FerryBackend: Sendable {
     func forget(_ device: String, on machine: URL) async throws
     /// A forgotten computer brought back (`api/unforget`): setting it up again is doing so by hand.
     func unforget(_ device: String, on machine: URL) async throws
+    /// The phone itself brought back, if it was forgotten (`api/unforget {"self": true}`): it has just been added with
+    /// Add Device. A Ferry from before this answers 400.
+    func unforgetSelf(on machine: URL) async throws
 }
 
 public enum SendPayload: Sendable, Equatable {

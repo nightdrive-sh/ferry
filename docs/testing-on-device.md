@@ -106,10 +106,14 @@ notification itself shows can only be seen here.
 - [ ] Settings › Notifications off: no more notifications. Forget a computer: no more from it.
 - [ ] **Forgetting on every device** (docs/protocol.md › Forgetting a device), with the Mac, a Linux computer and the
       iPhone: Forget the Linux computer in the iPhone's Settings, and within about a minute it is gone from the Mac's
-      Settings › Devices (shown as Forgotten) and `ferry devices` on it says "forgotten". Bring it back on the Mac: the
-      iPhone finds it again. Forget the iPhone on the Mac: the Linux window's Devices page shows it forgotten, neither
-      computer's `push.json` has its subscription, and `ferry send --to iphone` no longer notifies. Brought back, it
-      notifies again once the app subscribes again (its daily check: up to a day later).
+      Settings › Devices and from `ferry devices` on the other computers, and stays gone. Restart Ferry on it
+      (`systemctl --user restart ferry`): within about a minute it is back on the Mac and the iPhone finds it again.
+      Forget the iPhone on the Mac: it leaves the Linux window's Devices page, neither computer's `push.json` has its
+      subscription, `ferry send --to iphone` no longer notifies, and using the app doesn't bring it back. Scan the Mac's
+      Add Device QR code with the Camera: the iPhone is back on both computers' lists within about a minute, and a send
+      from either notifies again without waiting for the app's daily check.
+- [ ] **Only phones that used Ferry are listed:** a phone or tablet on the tailnet that never opened Ferry (the app or a
+      computer's page) isn't in the Mac's Settings › Devices or `ferry devices`; once it opens Ferry, it is.
 - [ ] **One subscription per phone:** delete and reinstall the app, open it: each computer's `push.json` has one direct
       subscription from the iPhone, the new one.
 - [ ] With notifications denied in iOS Settings, Ferry's switch is off and **Allow in Settings** opens iOS Settings.

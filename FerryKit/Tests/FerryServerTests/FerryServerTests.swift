@@ -12,10 +12,15 @@ struct ServerRig {
     let outbound = FakeOutbound()
     let server: FerryServer
 
+    /// phones: the ones that have used Ferry here (phones.json), which are the ones listed
     init(known: [KnownComputer] = [KnownComputer(id: "nightdrive", name: "Nightdrive",
-                                               url: "https://nightdrive.tail1234.ts.net/ferry/", idle: 0, seen: 1)]) throws {
+                                               url: "https://nightdrive.tail1234.ts.net/ferry/", idle: 0, seen: 1)],
+         phones: [String] = ["iphone"], port: UInt16? = nil) throws {
         StateFile.save(known, state.appending(path: "machines.json"))
-        server = try FerryServer(config: ServerConfig(state: state), system: system, tailscale: tailscale, outbound: outbound)
+        StateFile.save(phones, state.appending(path: "phones.json"))
+        var config = ServerConfig(state: state)
+        if let port { config.port = port }   // 0 for a test that starts it: never the port of the Ferry running here
+        server = try FerryServer(config: config, system: system, tailscale: tailscale, outbound: outbound)
     }
 
     func device(_ id: String) async throws -> Device {

@@ -47,8 +47,13 @@ public actor Pusher {
         self.key = key
         self.config = config
         self.outbound = outbound
-        subs = StateFile.load([Subscription].self, state.appending(path: "push.json")) ?? []
+        subs = Self.saved(in: state)
         vias = StateFile.load([String].self, state.appending(path: "relays.json")) ?? []
+    }
+
+    /// The subscriptions kept in a state folder (push.json)
+    static func saved(in state: URL) -> [Subscription] {
+        StateFile.load([Subscription].self, state.appending(path: "push.json")) ?? []
     }
 
     public var publicKey: String { key.publicKey }

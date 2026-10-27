@@ -680,7 +680,11 @@ async function pushState() {
   const sub = await reg.pushManager.getSubscription()
   if (sub && Notification.permission === "granted") {
     // Told again on every start: the computer may have lost it, or it may have changed
-    if (!pushState.sent) { pushState.sent = true; api(HOME, "api/subscribe", { method: "POST", body: JSON.stringify(sub) }).catch(() => {}) }
+    if (!pushState.sent) {
+      pushState.sent = true
+      await added
+      api(HOME, "api/subscribe", { method: "POST", body: JSON.stringify(sub) }).catch(() => {})
+    }
     relayAll()
     return hint(null)
   }
@@ -693,6 +697,7 @@ async function enablePush() {
     if (perm !== "granted") { pushState(); return }
     const reg = await navigator.serviceWorker.ready
     const sub = await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64(pushKey) })
+    await added
     await api(HOME, "api/subscribe", { method: "POST", body: JSON.stringify(sub) })
     pushState.sent = true
     relayAll()
@@ -700,6 +705,15 @@ async function enablePush() {
   } catch (e) { note("Notifications failed", true) }
   pushState()
 }
+
+// Opened from nightdrive.sh's add page (#added): this phone was just added with Add Device, so it asks to be brought
+// back if it was forgotten, before it subscribes (a forgotten phone's subscription isn't kept). The fragment goes once
+// that is done, so a reload or a Home Screen icon made from this address doesn't ask again; one that failed is tried
+// again by a reload.
+const added = location.hash !== "#added" ? Promise.resolve() :
+  api(HOME, "api/unforget", { method: "POST", headers: { "Content-Type": "application/json" },
+                              body: JSON.stringify({ self: true }) })
+    .then(() => history.replaceState(null, "", location.pathname + location.search), () => {})
 
 if ("serviceWorker" in navigator) {
   navigator.serviceWorker.register("sw.js").catch(() => {})

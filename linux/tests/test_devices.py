@@ -28,6 +28,8 @@ class Devices(unittest.TestCase):
             json.dump([{"id": "nightdrive-pc", "name": "Nightdrive PC", "url": "https://pc/ferry/", "idle": 0},
                        {"id": "studio", "name": "Studio", "url": "https://studio/ferry/", "idle": 900},
                        {"id": "gone", "name": "Gone", "url": "https://gone/ferry/"}], f)
+        with open(os.path.join(self.tmp.name, "phones.json"), "w") as f:
+            json.dump(["iphone", "ipad", "someone-elses"], f)
 
     def tearDown(self):
         ferry.STATE = self.state
@@ -40,6 +42,27 @@ class Devices(unittest.TestCase):
             ("ipad", "tablet", False), ("iphone", "phone", True)])
         self.assertTrue(d[0]["inUse"])
         self.assertEqual(d[0]["name"], "Nightdrive PC")
+
+    def test_a_phone_is_listed_once_it_has_used_ferry(self):   # docs/protocol.md › Forgetting a device
+        os.remove(os.path.join(self.tmp.name, "phones.json"))
+        self.assertEqual([x["id"] for x in ferry.devices(STATUS)], ["nightdrive-pc", "studio"])
+        ferry.phones("ipad")
+        self.assertEqual([x["id"] for x in ferry.devices(STATUS)], ["nightdrive-pc", "studio", "ipad"])
+
+    def test_a_push_subscription_counts_as_having_used_it(self):   # an install from before phones.json
+        os.remove(os.path.join(self.tmp.name, "phones.json"))
+        with open(os.path.join(self.tmp.name, "push.json"), "w") as f:
+            json.dump([{"endpoint": "https://p/1", "keys": {}, "device": "iphone"},
+                       {"endpoint": "https://p/2", "keys": {}, "device": "your phone"}], f)
+        self.assertEqual([x["id"] for x in ferry.devices(STATUS)], ["nightdrive-pc", "studio", "iphone"])
+
+    def test_phones_json_keeps_names_only(self):   # a file edited by hand
+        with open(os.path.join(self.tmp.name, "phones.json"), "w") as f:
+            json.dump(["iphone", "your phone", 5, None, "a.b"], f)
+        self.assertEqual(ferry.phones(), {"iphone"})
+        with open(os.path.join(self.tmp.name, "phones.json"), "w") as f:
+            json.dump({"not": "a list"}, f)
+        self.assertEqual(ferry.phones(), set())
 
     def test_target_defaults_to_a_phone_online(self):
         self.assertEqual(ferry.target(ferry.devices(STATUS))["id"], "iphone")

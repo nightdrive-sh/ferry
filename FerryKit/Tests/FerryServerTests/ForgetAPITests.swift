@@ -36,6 +36,51 @@ import Testing
         #expect(await r.forgotten.all == [Forgetting(device: "studio", time: r.clock.now, forgotten: false)])
     }
 
+    /// A phone just added again with Add Device brings itself back (docs/protocol.md › Forgetting a device)
+    @Test func unforgetSelf() async throws {
+        let r = try APIRig()   // asking as the iPhone
+        _ = await r.call("POST", "/api/forget", json: #"{"device":"iphone"}"#)
+        _ = await r.call("POST", "/api/forget", json: #"{"device":"studio"}"#)
+        r.clock.advance(1)
+        let ok = await r.call("POST", "/api/unforget", json: #"{"self":true}"#)
+        #expect(ok.status == 200)
+        #expect(ok.json["ok"] as? Bool == true)
+        #expect(await r.forgotten.ids == ["studio"])
+        #expect(await r.forgotten.all.first { $0.device == "iphone" } == Forgetting(device: "iphone", time: r.clock.now, forgotten: false))
+    }
+
+    @Test func unforgetSelfWhenNotForgottenChangesNothing() async throws {
+        let r = try APIRig()
+        #expect(await r.call("POST", "/api/unforget", json: #"{"self":true}"#).status == 200)
+        #expect(await r.forgotten.all.isEmpty)   // no entry made: nothing to pass on to the others
+    }
+
+    @Test func unforgetSelfFromADeviceNotNamedChangesNothing() async throws {
+        let r = try APIRig()
+        _ = await r.call("POST", "/api/forget", json: #"{"device":"iphone"}"#)
+        let before = await r.forgotten.all
+        r.clock.advance(1)
+        #expect(await r.call("POST", "/api/unforget", json: #"{"self":true}"#, replacing: [("X-Forwarded-For", "100.99.0.9")]).status == 200)
+        #expect(await r.call("POST", "/api/unforget", json: #"{"self":true}"#, replacing: [("X-Forwarded-For", nil)]).status == 200)
+        #expect(await r.forgotten.all == before)
+        // self that isn't true is no self: a device is wanted then
+        #expect(await r.call("POST", "/api/unforget", json: #"{"self":false}"#).status == 400)
+        #expect(await r.call("POST", "/api/forget", json: #"{"self":true}"#).status == 400)   // forgetting oneself isn't a thing
+    }
+
+    /// The device list has the phones that have used Ferry here: any call to the API, once past the gate
+    @Test func aPhoneThatAsksIsRecorded() async throws {
+        let r = try APIRig()
+        #expect(await r.phones.names.isEmpty)
+        _ = await r.call("GET", "/api/items", replacing: [("Tailscale-User-Login", "other@example.com")])   // not past the gate
+        #expect(await r.phones.names.isEmpty)
+        _ = await r.call("GET", "/api/ping", replacing: [("X-Forwarded-For", "100.99.0.9")])   // no name for it
+        _ = await r.call("GET", "/api/ping", replacing: [("X-Forwarded-For", "100.64.0.2")])   // Nightdrive, a computer
+        #expect(await r.phones.names.isEmpty)
+        _ = await r.call("GET", "/api/items")
+        #expect(await r.phones.names == ["iphone"])
+    }
+
     @Test func forgettingAPhoneDropsItsSubscriptions() async throws {
         let r = try APIRig()   // asking as the iPhone
         #expect(await subscribe(r, "https://push.nightdrive.sh/push/a") == 200)

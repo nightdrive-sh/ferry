@@ -12,7 +12,7 @@ import Testing
 /// (a plain `swift test`) the suite doesn't run.
 ///
 /// There, `tests/fake-tailscale` names the machine 127.0.0.1 and the owner tester@example.com, and the iPhone is
-/// 100.64.0.2; `xclip` is a pretend clipboard that keeps what it is given in /tmp/fake-clipboard.
+/// 100.64.0.2 (the iPad 100.64.0.3); `xclip` is a pretend clipboard that keeps what it is given in /tmp/fake-clipboard.
 @Suite(.serialized, .enabled(if: LinuxServer.configured, "linux/tests/client.sh runs it against a test machine"))
 struct LinuxServerTests {
     let linux = LinuxServer()
@@ -95,6 +95,7 @@ struct LinuxServerTests {
 
     @Test func leftForThePhone() async throws {
         try linux.reset()
+        try await linux.usedFerry()
         try linux.sh("""
             ferry send --to iphone hello
             printf 'pdf bytes' > "/tmp/Lasku & kuitti #2.pdf"
@@ -114,6 +115,7 @@ struct LinuxServerTests {
 
     @Test func removeAndClear() async throws {
         try linux.reset()
+        try await linux.usedFerry()
         try linux.sh("ferry send --to iphone one; ferry send --to iphone two")
         try await linux.client.send(.text("from the phone", clip: false), to: linux.machine) { _ in }
         let items = try await linux.client.items(linux.machine).items
@@ -127,6 +129,7 @@ struct LinuxServerTests {
 
     @Test func goneIsRefused() async throws {
         try linux.reset()
+        try await linux.usedFerry()
         try linux.sh("printf x > /tmp/gone.txt && ferry send --to iphone /tmp/gone.txt")
         let file = try #require(try await linux.client.items(linux.machine).items.first)
         try await linux.client.remove(file.id, on: linux.machine)
@@ -163,14 +166,36 @@ struct LinuxServerTests {
         #expect(try linux.sh("cat ~/.local/share/ferry/push.json") == "[]")
     }
 
-    /// docs/protocol.md › Forgetting a device: the app's Forget, as the Linux server takes it
+    /// docs/protocol.md › Forgetting a device: a phone on the tailnet is listed once it has used Ferry there
+    @Test func phonesListedOnceTheyUsedFerry() async throws {
+        try linux.reset()
+        // No phone has used it yet. The server keeps what it read of phones.json, so it starts again without one.
+        try linux.sh("""
+            rm -f ~/.local/share/ferry/phones.json
+            systemctl --user restart ferry.service
+            for _ in $(seq 50); do curl -s -o /dev/null http://127.0.0.1:47270/ && break; sleep 0.2; done
+            """)
+        #expect(!(try linux.sh("ferry devices")).contains("iphone"))
+        _ = try await linux.client.ping(linux.machine)
+        let listed = try linux.sh("ferry devices")
+        #expect(listed.contains("iphone"))
+        #expect(!listed.contains("ipad"))
+    }
+
+    /// docs/protocol.md › Forgetting a device: the app's Forget, as the Linux server takes it, and the iPad added again
+    /// with Add Device bringing itself back
     @Test func forgetLikeTheApp() async throws {
         try linux.reset()
+        try await linux.usedFerry()
+        #expect(try linux.sh("ferry devices").contains("ipad"))
         try await linux.client.forget("ipad", on: linux.machine)
         #expect(try await linux.client.machines(linux.machine).forgotten == ["ipad"])
-        #expect(try linux.sh("ferry devices").contains("forgotten"))
-        try linux.sh("ferry unforget ipad")
+        #expect(!(try linux.sh("ferry devices")).contains("ipad"))
+        try await linux.client.unforgetSelf(on: linux.machine)   // the iPhone isn't forgotten: nothing changes
+        #expect(try await linux.client.machines(linux.machine).forgotten == ["ipad"])
+        try await linux.ipad.unforgetSelf(on: linux.machine)
         #expect(try await linux.client.machines(linux.machine).forgotten.isEmpty)
+        #expect(try linux.sh("ferry devices").contains("ipad"))
     }
 
     private func tempFile(_ name: String) -> URL {
@@ -197,11 +222,21 @@ struct LinuxServer {
 
     let machine = URL(string: env["FERRY_LINUX_URL"] ?? "http://127.0.0.1/ferry/")!
     /// The app's client as tailscale serve would pass it on: the owner, from the iPhone's address
-    let client: HTTPBackend = {
+    let client = Self.backend(from: "100.64.0.2")
+    /// The same from the iPad's
+    let ipad = Self.backend(from: "100.64.0.3")
+
+    static func backend(from address: String) -> HTTPBackend {
         let session = URLSessionConfiguration.ephemeral
-        session.httpAdditionalHeaders = ["Tailscale-User-Login": "tester@example.com", "X-Forwarded-For": "100.64.0.2"]
+        session.httpAdditionalHeaders = ["Tailscale-User-Login": "tester@example.com", "X-Forwarded-For": address]
         return HTTPBackend(configuration: session)
-    }()
+    }
+
+    /// The iPhone and the iPad call the server once: only a phone that has used Ferry there is a device to send to
+    func usedFerry() async throws {
+        _ = try await client.ping(machine)
+        _ = try await ipad.ping(machine)
+    }
 
     /// Runs a shell script on the server's machine (`ferry` is the installed command) and returns its output.
     @discardableResult func sh(_ script: String) throws -> String {
@@ -222,7 +257,8 @@ struct LinuxServer {
         return out
     }
 
-    /// An empty box, Downloads and clipboard, no subscriptions and nothing forgotten, before each test.
+    /// An empty box, Downloads and clipboard, no subscriptions and nothing forgotten, before each test. The phones that
+    /// used Ferry stay (the server keeps them in memory too): a test that sends to one calls from it first.
     func reset() throws {
         try sh("""
             ferry clear >/dev/null

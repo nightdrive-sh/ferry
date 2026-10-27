@@ -13,6 +13,7 @@ struct APIRig {
     let box: Box
     let pusher: Pusher
     let forgotten: Forgotten
+    let phones: Phones
     let api: FerryAPI
 
     init() throws {
@@ -21,8 +22,9 @@ struct APIRig {
         box = Box(state: state, keepDays: 7, clock: clock.function)
         pusher = Pusher(state: state, key: try VAPIDKey.load(orCreateIn: state), config: config, outbound: outbound)
         forgotten = Forgotten(state: state, clock: clock.function)
+        phones = Phones(state: state)
         api = FerryAPI(config: config, system: system, tailnet: Tailnet(cli: FakeTailscale(), clock: clock.function),
-                       box: box, pusher: pusher, forgotten: forgotten, clock: clock.function,
+                       box: box, pusher: pusher, forgotten: forgotten, phones: phones, clock: clock.function,
                        machines: { [["url": .string("https://macbook.tail1234.ts.net/ferry/"), "name": .string("MacBook"), "self": .bool(true)]] })
     }
 

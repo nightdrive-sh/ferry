@@ -236,13 +236,28 @@ through `api/relay-push` goes no further.
 ### Forgetting a device
 
 The owner forgets a device (a computer, a phone) on any of their devices, and it is forgotten on all of them: it leaves
-every computer's device list and the phones' lists of computers, until the owner brings it back by hand. A forgotten
-device that is still on the tailnet doesn't come back by itself.
+every computer's device list and the phones' lists of computers. Nothing brings it back but its owner adding it again
+(below): not its being on the tailnet, not its using Ferry, and no button elsewhere. A forgotten computer comes back when
+its Ferry starts again, or when a phone adds it with its QR code or its name; a forgotten phone, only when it is added
+again with Add Device.
 
-**`POST api/forget`** and **`POST api/unforget`** with `{"device": "<short tailnet name>"}`, from any of the owner's
-devices (the gate above, like every call). The computer records the decision with the time now (later than any it
-already holds for that device), carries it out at once and answers `{"ok": true}`. 400 for a device that isn't a tailnet
-name (letters, digits and `-`, at most 63).
+**A computer's device list** (its window, `ferry devices`) has the owner's other computers running Ferry, found by
+themselves (› `api/machines`), and the phones and tablets that have used Ferry on it: a device Tailscale says is a phone
+or a tablet (iOS, Android) is listed once it has made a call there, the app's or a page's. One that never used Ferry
+isn't listed, though it is on the tailnet.
+
+**`POST api/forget`** with `{"device": "<short tailnet name>"}`, from any of the owner's devices (the gate above, like
+every call). The computer records the decision with the time now (later than any it already holds for that device),
+carries it out at once and answers `{"ok": true}`. 400 for a device that isn't a tailnet name (letters, digits and `-`,
+at most 63).
+
+**`POST api/unforget`** brings a device back, recorded the same way, and answers `{"ok": true}`:
+- **`{"device": "<short tailnet name>"}`**: a computer the asking phone has just added again (› What forgetting does).
+  400 as for `api/forget`.
+- **`{"self": true}`**: the asking device itself, named by Tailscale from its address, when it is forgotten here. A phone
+  sends it when it has just been added with Add Device: the app after setting up with a computer by its QR code or its
+  name, a page when it is opened from nightdrive.sh's add page (› Adding a phone). A device that isn't forgotten, or that
+  the computer can't name, changes nothing.
 
 **The list.** A computer keeps one entry per device ever forgotten, and `api/ping` and `api/machines` carry all of them as
 `forgotten`:
@@ -263,16 +278,21 @@ computer. There is no call between computers for it.
 - **A forgotten computer** is left out of the others' `api/machines` and device lists, so nothing is sent to it. It is
   still asked `api/ping`, to merge its list. A computer never forgets itself: its own name in the list changes nothing
   there, and its `api/machines` still lists it as `self`.
+- **A computer's Ferry starting** (the computer starting, Ferry turned on or updated) brings it back: once it has asked the
+  others `api/ping` the first time after it started, it brings itself back if its list says it is forgotten. A forget
+  it learns of later holds until it starts again. So a computer that is only now and then on (a test machine) can be
+  forgotten after use, and it comes back when it is next started.
 - **A forgotten phone** leaves the device lists, and every push subscription it has on the computer goes (also when the
   computer learns of it from another one). `api/subscribe` from it answers 200 but keeps nothing. Everything else still
-  works for it: forgetting tidies the lists, it is not a security boundary (Tailscale is). Brought back, it gets its
-  notifications again once it subscribes again (the app does so at least daily).
+  works for it: forgetting tidies the lists, it is not a security boundary (Tailscale is). Added again, it subscribes
+  again: the app at once on every computer it knows, a page when it starts.
 - **A client** drops from its memory the computers forgotten in `api/machines`'s list (the first label of a base URL's
   host is its device name), after taking in the list of machines. Its own Forget sends `api/forget` to a computer that
   answers, the forgotten one itself when no other does, and keeps the computer hidden until an `api/machines` answer
   lists it as forgotten (another computer may not have heard yet; the iPhone app waits 10 minutes at most, for a Ferry
   that doesn't forget). Setting up a computer again by hand (its QR code, its name) brings it back: the client sends it
-  `api/unforget` when its `api/machines` says it is forgotten.
+  `api/unforget` when its `api/machines` says it is forgotten, and `api/unforget {"self": true}` to every computer that
+  answers, for itself.
 - **The device name** is lowercased, as Tailscale writes it, whatever case `api/forget` gets.
 
 ### Ferry's push relay
@@ -309,7 +329,8 @@ https://nightdrive.sh/ferry/add#https://<machine>.<tailnet>.ts.net/ferry/
   `/.well-known/apple-app-site-association` naming app ID `279G2UNHPN.fi.feature.ferry` for `/ferry/add` (and
   `/ferry/add/`). The Camera then opens the app, which sets up with that computer, or adds it beside the others.
 - **Without the app**, the page says what is needed (the iPhone app, Tailscale on the phone, signed in as the same user)
-  and, on other phones, links to the base URL: the computer's own web page.
+  and, on other phones, links to the base URL with the fragment `#added`: the computer's own web page, which then knows
+  the phone was just added with Add Device (› Forgetting a device) and takes the fragment off.
 - **A client's scanner** takes the link, or a bare base URL as computers showed it before the link: an old computer
   still adds a phone. It also takes a percent-encoded fragment and `www.nightdrive.sh`. A link without a base URL in its
   fragment is no address.

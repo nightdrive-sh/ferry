@@ -44,6 +44,8 @@ struct Toast: Equatable {
     private let model: FerryModel
     /// The demo's model while it runs: a tap opens its items, and nothing is subscribed (its computers are pretend).
     var demo: FerryModel?
+    /// model.setUps when last synced: a change means the phone was added again, maybe after being forgotten
+    private var setUps = 0
 
     init(model: FerryModel, defaults: UserDefaults) {
         self.model = model
@@ -101,6 +103,10 @@ struct Toast: Equatable {
     /// After every poll: the planner usually finds nothing to do, and a computer that just answered gets subscribed.
     func sync() async {
         guard demo == nil else { return }
+        if model.setUps != setUps {
+            setUps = model.setUps
+            registrar.subscribeAgain()
+        }
         await registrar.sync(known: model.pushKeys, reachable: model.reachableMachines)
     }
 

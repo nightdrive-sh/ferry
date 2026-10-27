@@ -348,12 +348,7 @@ def device_icon(device):
 
 
 FORGET_NOTE = ("Forget takes a device off the lists on all your devices, and a phone gets no more notifications. "
-               "It stays forgotten until you bring it back.")
-
-
-def device_rows(data):
-    """The Devices page: the owner's devices, to forget, then the forgotten ones, to bring back ((device, forgotten))."""
-    return [(d, False) for d in data.get("devices") or []] + [(d, True) for d in data.get("forgotten") or []]
+               "A computer comes back when Ferry starts on it again, a phone when you add it again with Add Device.")
 
 
 def can_take(device):

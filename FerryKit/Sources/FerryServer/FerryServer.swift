@@ -20,6 +20,8 @@ public actor FerryServer {
     let pusher: Pusher
     let found: Found
     let forgotten: Forgotten
+    /// The phones that have used Ferry here: the device list's (not `phones()`, the count of subscriptions)
+    let usedBy: Phones
     /// Yields when Received changes (something lands, or is removed, cleared or pruned), for the menu bar icon's count
     public nonisolated let receivedChanged: AsyncStream<Void>
     private var http: HTTPServer?
@@ -29,6 +31,9 @@ public actor FerryServer {
     private var failedToStart = false
     /// What Tailscale said when it last refused to publish: it stands until publish(true) is asked again (Try Again)
     private var refused: PublishState?
+    /// Started and not yet through its first look for the other computers: then it brings itself back if it is
+    /// forgotten (docs/protocol.md › Forgetting a device)
+    private var comingBack = false
 
     public init(config: ServerConfig, system: any FerrySystem, tailscale: any TailscaleCLI,
                 outbound: any Outbound = URLSessionOutbound(),
@@ -46,11 +51,13 @@ public actor FerryServer {
         found = Found(config: config, probe: { [config, outbound] host in await Found.probe(host: host, config: config, outbound: outbound) },
                       clock: clock)
         forgotten = Forgotten(state: config.state, clock: clock)
+        usedBy = Phones(state: config.state)
     }
 
     /// Listens on 127.0.0.1, prunes the box hourly and looks for the other computers now and then. Returns the port.
     public func start() async throws -> UInt16 {
-        let api = FerryAPI(config: config, system: system, tailnet: tailnet, box: box, pusher: pusher, forgotten: forgotten, clock: clock,
+        let api = FerryAPI(config: config, system: system, tailnet: tailnet, box: box, pusher: pusher, forgotten: forgotten, phones: usedBy,
+                           clock: clock,
                            machines: { [weak self] in await self?.machines() ?? [] })
         let http = HTTPServer(port: config.port) { await api.handle($0) }
         let port: UInt16
@@ -61,6 +68,7 @@ public actor FerryServer {
             throw error
         }
         failedToStart = false
+        comingBack = true
         self.http = http
         boundPort = port
         let box = self.box
@@ -166,6 +174,7 @@ public actor FerryServer {
             StateFile.save(Found.merge(known: known, found: answered, ids: view.ids, now: clock()), path)
             if await forgotten.learn(answered.flatMap(\.forgotten)) { await pusher.drop(devices: await forgotten.ids) }
         }
+        await comeBack(me: view.me)
         let gone = await forgotten.ids
         let me: [String: JSONValue] = ["url": .string(await address()?.absoluteString ?? ""),
                                        "name": .string(await system.computerName()), "self": .bool(true)]
@@ -176,13 +185,18 @@ public actor FerryServer {
         StateFile.load([KnownComputer].self, config.state.appending(path: "machines.json")) ?? []
     }
 
-    public func devices() async -> [Device] {
-        Devices.list(view: await tailnet.view(), known: known, forgotten: await forgotten.ids)
+    /// Once per start, after the first look for the others (also when none answered), with what they forgot taken in:
+    /// this computer's Ferry starting brings it back. A forget learnt later holds until the next start, so a computer
+    /// that is only now and then on can be forgotten after use. me: its tailnet name, "" while Tailscale is off (then
+    /// the next look does it).
+    private func comeBack(me: String) async {
+        guard comingBack, let own = me.split(separator: ".").first.map(String.init) else { return }
+        comingBack = false
+        if await forgotten.ids.contains(own) { await forgotten.decide(own, forget: false) }
     }
 
-    /// The devices the owner forgot that are still on the tailnet, to bring back
-    public func forgottenDevices() async -> [Device] {
-        Devices.list(view: await tailnet.view(), known: known, forgotten: await forgotten.ids, forgottenOnes: true)
+    public func devices() async -> [Device] {
+        Devices.list(view: await tailnet.view(), known: known, phones: await usedBy.names, forgotten: await forgotten.ids)
     }
 
     /// Off every computer's and phone's lists (the others learn it from this Mac's api/ping), its subscriptions here
@@ -190,11 +204,6 @@ public actor FerryServer {
     public func forget(_ id: String) async {
         await forgotten.decide(id, forget: true)
         await pusher.drop(devices: await forgotten.ids)
-    }
-
-    /// Back on the lists: a phone subscribes again by itself
-    public func unforget(_ id: String) async {
-        await forgotten.decide(id, forget: false)
     }
 
     /// How many push subscriptions phones made here: one more means a phone was added (bin/ferry's listing's `push`)

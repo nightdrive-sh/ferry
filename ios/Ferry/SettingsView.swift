@@ -47,7 +47,7 @@ struct SettingsView: View {
                     if leaveDemo != nil {
                         Text("These computers are pretend: nothing leaves the phone. To use Ferry, set it up with a computer running Ferry.")
                     } else {
-                        Text("Ferry finds your other computers through the setup one. Forget takes a computer off all your devices until you bring it back on one of your computers. A computer that hasn't answered for 7 days leaves this list.")
+                        Text("Ferry finds your other computers through the setup one. Forget takes a computer off all your devices until you add it again. A computer that hasn't answered for 7 days leaves this list.")
                     }
                 }
                 notifications

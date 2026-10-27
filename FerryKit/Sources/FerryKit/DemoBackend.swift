@@ -74,6 +74,7 @@ public actor DemoBackend: FerryBackend {
     /// The pretend computers have no other devices to tell
     public func forget(_ device: String, on machine: URL) async throws {}
     public func unforget(_ device: String, on machine: URL) async throws {}
+    public func unforgetSelf(on machine: URL) async throws {}
 
     public func send(_ payload: SendPayload, to machine: URL, progress: @escaping @Sendable (Double) -> Void) async throws {
         let url = MachineList.normalized(machine)

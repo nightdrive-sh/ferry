@@ -166,6 +166,27 @@ final class TestClock: Sendable {
         #expect(store.load() == reg.state)
     }
 
+    /// A forgotten phone's subscriptions were dropped by the computers: added again, it subscribes again everywhere,
+    /// at once on the computers that answer and on the others when they do
+    @Test func subscribingAgainEverywhere() async throws {
+        let relay = FakeRelay(), fake = FakeBackend()
+        let (reg, store) = try make(relay, fake)
+        await reg.setEnabled(true)
+        await reg.setToken("t", env: .production)
+        await reg.sync(known: [A: "kA", B: "kB"], reachable: [A, B])
+        #expect(reg.state.records.map(\.subscribed) == [true, true])
+        reg.subscribeAgain()
+        #expect(reg.state.records.map(\.subscribed) == [false, false])
+        #expect(store.load() == reg.state)
+        await reg.sync(known: [A: "kA", B: "kB"], reachable: [A])
+        #expect(await fake.calls.filter { $0.hasPrefix("subscribe") }.count == 3)
+        #expect(await relay.calls == ["register t production kA", "register t production kB"])   // the same addresses
+        #expect(reg.state.records.first { $0.machine == A }?.subscribed == true)
+        #expect(reg.state.records.first { $0.machine == B }?.subscribed == false)
+        await reg.sync(known: [A: "kA", B: "kB"], reachable: [A, B])
+        #expect(reg.state.records.map(\.subscribed) == [true, true])
+    }
+
     @Test func checkFindsTheAddressGoneAndRegistersAgain() async throws {   // Review Focus 4
         let relay = FakeRelay(), fake = FakeBackend(), clock = TestClock()
         let (reg, _) = try make(relay, fake, clock)

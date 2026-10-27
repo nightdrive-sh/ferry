@@ -29,8 +29,6 @@ final class MenuModel {
     var startError: String?
     var received: [BoxItem] = []
     var devices: [Device] = []
-    /// The devices the owner forgot, for Settings to bring back
-    var forgotten: [Device] = []
     var target: Device?
     var address: URL?
     /// Received items not yet seen in the popover, for the icon's count
@@ -191,7 +189,6 @@ final class MenuModel {
         publish = state
         address = await server.address()
         devices = await server.devices()
-        forgotten = await server.forgottenDevices()
         target = await server.target()
         if isOpen { await server.markSeen() }
         received = await server.received()
@@ -251,11 +248,6 @@ final class MenuModel {
     /// Settings' Forget: off this Mac's lists and, through the other computers, off every device's
     func forget(_ device: Device) async {
         await server?.forget(device.id)
-        await refresh()
-    }
-
-    func unforget(_ device: Device) async {
-        await server?.unforget(device.id)
         await refresh()
     }
 

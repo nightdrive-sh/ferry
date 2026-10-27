@@ -155,6 +155,13 @@ public enum PushPlanner {
         save()
     }
 
+    /// The phone was just added with Add Device: if it had been forgotten, the computers dropped its subscriptions
+    /// without telling it. Every computer is subscribed again, at the next sync if it answers, else when it does.
+    public func subscribeAgain() {
+        for i in state.records.indices { state.records[i].subscribed = false }
+        save()
+    }
+
     /// One at a time: a call while a sync runs returns at once (the next poll comes in 5 s).
     public func sync(known: [URL: String?], reachable: Set<URL>) async {
         guard !syncing else { return }

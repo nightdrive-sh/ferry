@@ -105,6 +105,35 @@ import Testing
         await #expect(throws: FerryError.self) { try await p.client.forget("studio.tail1234.ts.net", on: p.machine) }
     }
 
+    /// The phone is in the Mac's device list once it has used Ferry there, not merely for being on the tailnet
+    @Test func thePhoneIsListedOnceItAsks() async throws {
+        let p = try await Pair.make()
+        defer { Task { await p.server.stop() } }
+        #expect(await p.server.devices().map(\.id) == [])
+        _ = try await p.client.ping(p.machine)
+        #expect(await p.server.devices().map(\.id) == ["iphone"])
+    }
+
+    /// docs/protocol.md › Forgetting a device: a forgotten phone added again with Add Device brings itself back, and
+    /// its notifications with it
+    @Test func aForgottenPhoneAddedAgainComesBack() async throws {
+        let p = try await Pair.make()
+        defer { Task { await p.server.stop() } }
+        let keys = PushKeys.generate()
+        let endpoint = URL(string: "https://push.nightdrive.sh/push/abc")!
+        try await p.client.subscribe(endpoint, keys: keys, on: p.machine)
+        await p.server.forget("iphone")
+        #expect(await p.server.devices().isEmpty)
+        #expect(await p.server.pusher.subscriptions().isEmpty)
+        try await p.client.subscribe(endpoint, keys: keys, on: p.machine)   // answered, not kept
+        #expect(await p.server.pusher.subscriptions().isEmpty)
+        try await p.client.unforgetSelf(on: p.machine)
+        #expect(await p.server.forgotten.ids.isEmpty)
+        #expect(await p.server.devices().map(\.id) == ["iphone"])
+        try await p.client.subscribe(endpoint, keys: keys, on: p.machine)
+        #expect(await p.server.pusher.subscriptions().map(\.device) == ["iphone"])
+    }
+
     @Test func subscribeLikeTheApp() async throws {
         let p = try await Pair.make()
         defer { Task { await p.server.stop() } }

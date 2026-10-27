@@ -21,9 +21,9 @@
     ferry pick                    the same, files chosen in a file dialog (several at once); then the menu says "Sent"
     ferry text TEXT               sends a text
     ferry send-clipboard          sends the clipboard's text (a notification if it has none); to a computer, onto its clipboard
-    ferry devices                 the owner's other devices: computers running Ferry and phones, the picked one marked
+    ferry devices                 the owner's other devices (computers running Ferry, phones that used it), the picked one marked
     ferry target [DEVICE]         the device sends go to (the last one picked), or picks one
-    ferry forget | unforget DEVICE  a device off every computer's and phone's lists, or back on them
+    ferry forget DEVICE           a device off every computer's and phone's lists, until it is added again
     ferry seen                    marks what came from the phone as seen (the bar's count goes)
     N is a number from `ferry list`, or an item's id (the menu uses those: numbers change as the box does).
     send, add, pick, text and send-clipboard take --to DEVICE (its name in `ferry devices`) for one send, else the target.
@@ -55,8 +55,9 @@ browser here gets nothing. Anyone logged in to this computer could still reach t
 Ferry trusts the computer's own users, as a single-user desktop does.
 
 Kept in STATE: items.json (the box), the files left for the phone (files/), the VAPID key for Web Push (made on the first
-run; python3-cryptography), the phone's push subscriptions and the devices the owner forgot (forgotten.json, which
-reaches the other computers through api/ping). Files from the phone go to Downloads. Items go after
+run; python3-cryptography), the phone's push subscriptions, the phones that have used Ferry here (phones.json: the
+device list shows only those) and the devices the owner forgot (forgotten.json, which reaches the other computers
+through api/ping). Files from the phone go to Downloads. Items go after
 KEEP_DAYS days, a code or a password after SECRET_KEEP or once copied; removing one from the box doesn't delete a file in
 Downloads. Nightdrive's Ferry plugin, where this
 server came from, kept the same state in OLD_STATE: the first run moves it here (migrate()).
@@ -778,6 +779,7 @@ class Tailnet:
         self.me = ""            # this machine's tailnet name
         self.machines = []      # the owner's other machines that are online and could run Ferry: their tailnet names
         self.ids = set()        # the owner's other machines' short tailnet names, online or not
+        self.phones = set()     # the owner's phones' and tablets' short tailnet names
 
     def load(self, force=False):
         if not force and time.monotonic() - self.when < 60:
@@ -796,6 +798,8 @@ class Tailnet:
                          and p.get("OS") not in ("iOS", "android")]
         self.ids = {p["DNSName"].split(".")[0] for p in (st.get("Peer") or {}).values()
                     if p.get("UserID") == uid and p.get("DNSName")}
+        self.phones = {p["DNSName"].split(".")[0] for p in (st.get("Peer") or {}).values()
+                       if p.get("UserID") == uid and p.get("DNSName") and p.get("OS") in ("iOS", "android")}
         names = {}
         for p in list((st.get("Peer") or {}).values()) + [me]:
             # The tailnet name: an iPhone's HostName is "localhost"
@@ -1131,6 +1135,27 @@ def device_name(name):
     return isinstance(name, str) and bool(DEVICE_NAME.fullmatch(name))
 
 
+def phones(new=None):
+    """The phones and tablets that have used Ferry here (their short tailnet names), the ones the device list shows
+    (docs/protocol.md › Forgetting a device): the server adds one (new) the first time it calls, under the box's
+    lock."""
+    path = os.path.join(STATE, "phones.json")
+    with box(write=new is not None):
+        try:
+            with open(path) as f:
+                out = json.load(f)
+        except (OSError, ValueError):
+            out = []
+        out = {n for n in out if device_name(n)} if isinstance(out, list) else set()   # a file edited by hand
+        if new is not None and new not in out:
+            out.add(new)
+            tmp = path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(sorted(out), f)
+            os.replace(tmp, path)
+        return out
+
+
 def forgotten(change=None):
     """The devices the owner forgot, or brought back ({device, time, forgotten}: docs/protocol.md › Forgetting a
     device); change(list) edits them under the box's lock, and returns whether it changed anything (only then is it
@@ -1185,8 +1210,9 @@ def drop_subscriptions(ids):
 
 
 def decide(device, forget, now=time.time):
-    """Forgets a device, or brings it back (api/forget, ferry forget): decided now, and later than anything this
-    computer knows of it, so it wins here even over a computer whose clock is ahead. The others learn it from api/ping."""
+    """Forgets a device (api/forget, ferry forget), or brings it back (api/unforget, this computer's Ferry starting):
+    decided now, and later than anything this computer knows of it, so it wins here even over a computer whose clock is
+    ahead. The others learn it from api/ping."""
     device = device.lower()   # Tailscale's names are lowercase, however a request writes one
 
     def change(entries):
@@ -1198,6 +1224,13 @@ def decide(device, forget, now=time.time):
     gone = forgotten_ids(forgotten(change))
     drop_subscriptions(gone)
     changed()
+
+
+def bring_back(device):
+    """api/unforget {"self": true}: the asking device, just added again, back if it is forgotten here. One that isn't
+    gets no entry, and nothing is written."""
+    if device.lower() in forgotten_ids():
+        decide(device, False)
 
 
 def learn_forgotten(theirs):
@@ -1418,6 +1451,8 @@ class Ferry:
         self.lock = threading.Lock()
         self.notifying = threading.Lock()   # one files' notification at a time: each needs the id of the one before
         self.found = Found()             # the owner's other machines running Ferry
+        self.used = None                 # phones(), read once: a poll from a phone known already writes nothing
+        self.back = False                # whether this computer brought itself back since its Ferry started
 
     def machines(self):
         """This computer and the owner's other machines that answer as Ferry, as Tailscale has them online now, without
@@ -1433,9 +1468,30 @@ class Ferry:
                            [dict({k: v for k, v in r.items() if k != "forgotten"}, seen=now) for r in found]
             known_machines(merge)
             learn_forgotten([e for r in found for e in r["forgotten"]])
+        self.come_back()
         gone = forgotten_ids()
         return [{"url": url(), "name": alias(), "self": True}] + \
             [{"url": r["url"], "name": r["name"]} for r in found if r["id"] not in gone]
+
+    def come_back(self):
+        """This computer's Ferry starting brings it back (docs/protocol.md › What forgetting does): after the first
+        round of api/ping, which merged what the others forgot, if its list says it is forgotten. Once per start, so a
+        forget heard of later holds until the next one; not before Tailscale names this computer (nobody was asked)."""
+        own = self.tailnet.me.split(".")[0].lower()
+        with self.lock:
+            if self.back or not own:
+                return
+            self.back = True
+        bring_back(own)
+
+    def heard(self, device):
+        """A device's call that passed the gate: a phone or a tablet is on the device list from its first one."""
+        if device not in self.tailnet.phones:
+            return
+        if self.used is None:
+            self.used = phones()
+        if device not in self.used:
+            self.used = phones(device)
 
     # What the phone sends is in the box when the phone is answered; the notification comes after, in a thread of its
     # own, so a notification daemon that is slow or missing doesn't make the phone wait or give up.
@@ -1551,6 +1607,12 @@ def handler(app):
             ip = (self.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
             return app.tailnet.device(ip) or "your phone"
 
+        def heard(self):
+            """The asking device has used Ferry here (docs/protocol.md › Forgetting a device). Only a request through
+            tailscale serve names one: a local one with no address would look Tailscale up again every time."""
+            if self.headers.get("X-Forwarded-For"):
+                app.heard(self.who())
+
         def cors(self):
             """The asking page's origin if it is another of the owner's machines (its Ferry page switched to this one)."""
             origin = self.headers.get("Origin") or ""
@@ -1632,6 +1694,8 @@ def handler(app):
             path, q = self.route()
             if not self.gate(api=path.startswith("/api/") and not path.startswith("/api/file/")):
                 return
+            if path.startswith("/api/"):
+                self.heard()
             if path == "/":
                 with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
                     page = f.read().replace("%BASE%", MOUNT + "/")
@@ -1698,6 +1762,7 @@ def handler(app):
             path, q = self.route()
             if not self.gate(api=True):
                 return
+            self.heard()
             try:
                 if path == "/api/text":
                     body = json.loads(self.read_body(MAX_TEXT * 2) or b"{}")
@@ -1730,6 +1795,9 @@ def handler(app):
                 elif path in ("/api/forget", "/api/unforget"):
                     # Forgotten on every computer: the others merge this one's list from its api/ping
                     body = json.loads(self.read_body(8192) or b"{}")
+                    if path == "/api/unforget" and isinstance(body, dict) and body.get("self") is True:
+                        bring_back(self.who())   # a phone just added again with Add Device
+                        return self.send(200, {"ok": True})
                     device = body.get("device") if isinstance(body, dict) else None
                     if not device_name(device):
                         return self.send(400, "Not a device's tailnet name")
@@ -2181,17 +2249,13 @@ def set_tray(on):
             os.remove(path)
 
 
-def devices(st=None, forgotten=False):
-    """The owner's other devices, computers first: {id (the short tailnet name), name, kind (computer, phone, tablet),
-    online, inUse (a computer in use when last asked)}. Computers are the ones the server found running Ferry
-    (machines.json), asleep while Tailscale says they're offline; phones and tablets come from Tailscale. Without the
-    ones the owner forgot; forgotten=True: only those, to bring back."""
-    gone = forgotten_ids()
-    return [d for d in all_devices(st) if (d["id"] in gone) == forgotten]
-
-
-def all_devices(st=None):
+def devices(st=None):
+    """The owner's other devices, computers first, without the ones the owner forgot: {id (the short tailnet name),
+    name, kind (computer, phone, tablet), online, inUse (a computer in use when last asked)}. Computers are the ones the
+    server found running Ferry (machines.json), asleep while Tailscale says they're offline; phones and tablets are
+    Tailscale's that have used Ferry here (docs/protocol.md › Forgetting a device)."""
     st = st or tailscale_status()
+    gone = forgotten_ids()
     me = st.get("Self") or {}
     uid = me.get("UserID")
     peers = {(p.get("DNSName") or "").split(".")[0]: p for p in (st.get("Peer") or {}).values()
@@ -2199,13 +2263,15 @@ def all_devices(st=None):
     out = []
     for m in sorted(known_machines(), key=lambda m: m.get("name", "").lower()):
         p = peers.get(m.get("id"))
-        if not p or p.get("OS") in ("iOS", "android"):
+        if not p or p.get("OS") in ("iOS", "android") or m["id"] in gone:
             continue
         online = bool(p.get("Online"))
         out.append({"id": m["id"], "name": m.get("name") or m["id"], "kind": "computer", "online": online,
                     "inUse": online and m.get("idle") == 0})
+    # A phone with a push subscription has used Ferry, also one that did before phones.json was kept (an update)
+    used = phones() | {s.get("device") for s in subscriptions()}
     for pid, p in sorted(peers.items()):
-        if p.get("OS") in ("iOS", "android"):
+        if p.get("OS") in ("iOS", "android") and pid in used and pid not in gone:
             tablet = "ipad" in (pid + (p.get("HostName") or "")).lower() or "tablet" in pid.lower()
             out.append({"id": pid, "name": pid, "kind": "tablet" if tablet else "phone", "online": bool(p.get("Online")),
                         "inUse": False})
@@ -2318,7 +2384,6 @@ def listing():
     served = have and bool(st) and serving()
     return {"on": on, "tailscale": st.get("BackendState") == "Running", "url": url(st), "serving": served,
             "setup": setup_step(st, have, on, served), "push": len(subs), "items": out, "devices": devs,
-            "forgotten": devices(st, forgotten=True),
             "target": t["id"] if t else "", "sent": last_sent(), "version": VERSION, "update": available_update()}
 
 
@@ -2664,17 +2729,14 @@ def main():
                 "asleep" if d["kind"] == "computer" else "offline"
             print(f"{'*' if t and d['id'] == t['id'] else ' '} {d['id']:<24} {d['kind']:<9} {state}" +
                   (f"  ({d['name']})" if d["name"] != d["id"] else ""))
-        for d in devices(forgotten=True):
-            print(f"  {d['id']:<24} {d['kind']:<9} forgotten" + (f"  ({d['name']})" if d["name"] != d["id"] else ""))
         if not devs:
             print("No other device yet: add your phone with Add Device in Ferry's menu (or ferry qr)", file=sys.stderr)
-    elif cmd in ("forget", "unforget") and len(a) == 2:
-        devs = devices(forgotten=cmd == "unforget")
-        dev = next((d for d in devs if a[1] in (d["id"], d["name"])), None)
+    elif cmd == "forget" and len(a) == 2:
+        dev = next((d for d in devices() if a[1] in (d["id"], d["name"])), None)
         if not dev:
-            print(f"No {'forgotten ' if cmd == 'unforget' else ''}device {a[1]}: see ferry devices", file=sys.stderr)
+            print(f"No device {a[1]}: see ferry devices", file=sys.stderr)
             return 1
-        decide(dev["id"], cmd == "forget")
+        decide(dev["id"], True)
     elif cmd == "target":
         devs = devices()
         if len(a) == 1:

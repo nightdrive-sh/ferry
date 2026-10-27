@@ -21,21 +21,46 @@ public struct Device: Sendable, Equatable, Identifiable {
     }
 }
 
-enum Devices {
-    /// bin/ferry's `devices()`: computers are the ones found running Ferry (machines.json), asleep while Tailscale
-    /// says they're offline; phones and tablets come from Tailscale. Without the forgotten ones; with
-    /// `forgottenOnes`, only those, to bring back.
-    static func list(view: TailnetView, known: [KnownComputer], forgotten: Set<String>, forgottenOnes: Bool = false) -> [Device] {
-        list(view: view, known: known).filter { forgotten.contains($0.id) == forgottenOnes }
+/// The phones and tablets that have used Ferry on this computer (docs/protocol.md › Forgetting a device), kept in
+/// phones.json: only those are in the device list, not every phone on the tailnet.
+public actor Phones {
+    private let path: URL
+    public private(set) var names: Set<String>
+
+    public init(state: URL) {
+        path = state.appending(path: "phones.json")
+        if let kept = StateFile.load([String].self, path) {
+            names = Set(kept)
+        } else {
+            // A Ferry from before this list: a phone subscribed here has used it, so an update doesn't empty the list
+            names = Set(Pusher.saved(in: state).map(\.device).filter(Forgotten.isDeviceName))
+            if !names.isEmpty { StateFile.save(names.sorted(), path) }
+        }
     }
 
-    static func list(view: TailnetView, known: [KnownComputer]) -> [Device] {
+    /// A phone or a tablet asked: written only when it is new, since every request records its asker
+    public func used(by name: String) {
+        guard Forgotten.isDeviceName(name), !names.contains(name) else { return }
+        names.insert(name)
+        StateFile.save(names.sorted(), path)
+    }
+}
+
+enum Devices {
+    /// Without the forgotten ones
+    static func list(view: TailnetView, known: [KnownComputer], phones: Set<String>, forgotten: Set<String>) -> [Device] {
+        list(view: view, known: known, phones: phones).filter { !forgotten.contains($0.id) }
+    }
+
+    /// bin/ferry's `devices()`: computers are the ones found running Ferry (machines.json), asleep while Tailscale
+    /// says they're offline; phones and tablets are Tailscale's that have used Ferry here (`Phones`).
+    static func list(view: TailnetView, known: [KnownComputer], phones used: Set<String>) -> [Device] {
         let peers = Dictionary(view.peers.map { ($0.id, $0) }, uniquingKeysWith: { a, _ in a })
         let computers = known.sorted { $0.name.lowercased() < $1.name.lowercased() }.compactMap { m -> Device? in
             guard let p = peers[m.id], !TailnetView.phoneOSes.contains(p.os) else { return nil }
             return Device(id: m.id, name: m.name, kind: .computer, online: p.online, inUse: p.online && m.idle == 0)
         }
-        let phones = view.peers.filter { TailnetView.phoneOSes.contains($0.os) }.sorted { $0.id < $1.id }.map { p in
+        let phones = view.peers.filter { TailnetView.phoneOSes.contains($0.os) && used.contains($0.id) }.sorted { $0.id < $1.id }.map { p in
             let tablet = (p.id + p.hostName).lowercased().contains("ipad") || p.id.lowercased().contains("tablet")
             return Device(id: p.id, name: p.id, kind: tablet ? .tablet : .phone, online: p.online, inUse: false)
         }

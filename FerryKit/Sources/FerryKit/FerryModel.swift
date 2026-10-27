@@ -51,6 +51,10 @@ public enum SendState: Equatable, Sendable {
     /// A poll has heard from the computers (or found them unreachable) since launch: until then an empty list means
     /// "not asked yet", not "nothing there".
     public private(set) var hasPolled = false
+    /// How many times this run the phone was set up with a computer, i.e. added with Add Device. It may have been
+    /// forgotten before, and then the computers dropped its subscriptions: notifications subscribe again when this
+    /// changes.
+    public private(set) var setUps = 0
 
     private let backend: any FerryBackend
     private let store: MachineStore
@@ -381,7 +385,17 @@ public enum SendState: Equatable, Sendable {
             keep()
         }
         store.save(list)
-        await refreshMachines(bringingBack: url)
+        let online = await refreshMachines(bringingBack: url)
+        // Added with Add Device: the phone brings itself back where it was forgotten (docs/protocol.md › Forgetting a
+        // device). Every computer that answers is told, not only the one set up, which may be a Ferry from before (it
+        // answers 400). Best effort: one asleep learns it from the others' lists.
+        let backend = backend
+        await withTaskGroup(of: Void.self) { group in
+            for machine in online.union([url]) {
+                group.addTask { try? await backend.unforgetSelf(on: machine) }
+            }
+        }
+        setUps += 1
         await refresh()
     }
 

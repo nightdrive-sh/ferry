@@ -163,6 +163,14 @@ printf '<script>alert(1)</script>' > "$work/page.html"
 printf 'only the iPad' > "$work/ipad.txt"
 cp "$work/photo.jpg" "$work/Kuva ä #1.jpg"
 ask -f -o /dev/null -X POST "$B/api/clear?to=phone"   # hello.txt, from the moved state, has been checked
+# A phone is on the device list once it has used Ferry here: the iPhone has, the iPad not yet
+ipad() { curl -sS --max-time 20 -H "Host: $HOST" -H "Tailscale-User-Login: tester@example.com" -H "X-Ferry: 1" \
+  -H "X-Forwarded-For: 100.64.0.3" "$@"; }
+[[ $("$ferry" devices) == *iphone* && $("$ferry" devices) != *ipad* ]] || die "ferry devices before the iPad's call: $("$ferry" devices)"
+ipad -f -o /dev/null "$B/api/ping"
+[[ $("$ferry" devices) == *ipad* ]] || die "the iPad isn't listed after its call: $("$ferry" devices)"
+json 'sorted(d) == ["ipad", "iphone"]' "phones.json: $(cat "$STATE/phones.json")" < "$STATE/phones.json"
+check "ferry devices: a phone is listed once it has made a call (phones.json)"
 "$ferry" send --to iphone "$work/note.txt" >/dev/null
 "$ferry" send --to iphone "$work/page.html" >/dev/null
 "$ferry" send --to iphone "$work/Kuva ä #1.jpg" >/dev/null
@@ -174,8 +182,7 @@ items | json 'not any(i.get("for") == "ipad" or i.get("text") == "for the iPad" 
 items | json 'sum(i["to"] == "phone" for i in d["items"]) == 4 and \
   all("from" not in i and i["for"] == "iphone" for i in d["items"] if i["to"] == "phone")' "what was left for the iPhone"
 check "api/items: the iPhone sees what was left for it (for: iphone, no from), not the iPad's"
-ipad=$(curl -sS -H "Host: $HOST" -H "Tailscale-User-Login: tester@example.com" -H "X-Ferry: 1" \
-  -H "X-Forwarded-For: 100.64.0.3" "$B/api/items")
+ipad=$(ipad "$B/api/items")
 python3 -c 'import json, sys; d = json.loads(sys.argv[1]); assert sorted(i.get("name") or i.get("text") \
   for i in d["items"] if i["to"] == "phone") == ["for the iPad", "ipad.txt"], d' "$ipad" || die "the iPad's items"
 check "api/items: the iPad sees its own two"
@@ -277,16 +284,22 @@ ask -f -o /dev/null -H "Content-Type: application/json" -d "{\"endpoint\": \"$ep
 check "api/forget: the iPhone's subscription went, and a new one isn't kept"
 ask -f "$B/api/ping" | json '[(e["device"], e["forgotten"]) for e in d["forgotten"]] == [("iphone", True)]' "api/ping: forgotten"
 ask -f "$B/api/machines" | json '[e["device"] for e in d["forgotten"]] == ["iphone"]' "api/machines: forgotten"
-"$ferry" list --json | json '[x["id"] for x in d["forgotten"]] == ["iphone"] and "iphone" not in [x["id"] for x in d["devices"]]' \
+"$ferry" list --json | json '"forgotten" not in d and "iphone" not in [x["id"] for x in d["devices"]]' \
   "ferry list --json: the iPhone forgotten"
-check "api/ping, api/machines and ferry list --json say the iPhone is forgotten"
-"$ferry" unforget iphone
-ask -f "$B/api/ping" | json '[(e["device"], e["forgotten"]) for e in d["forgotten"]] == [("iphone", False)]' "unforget"
-"$ferry" list --json | json 'd["forgotten"] == [] and "iphone" in [x["id"] for x in d["devices"]]' "ferry unforget"
+check "api/ping and api/machines say the iPhone is forgotten, ferry list --json no longer lists it"
+ask -f "$B/api/ping" >/dev/null
+"$ferry" list --json | json '"iphone" not in [x["id"] for x in d["devices"]]' "a forgotten iPhone's call brought it back"
+! "$ferry" unforget iphone 2>/dev/null || die "ferry unforget brought a device back"
+ipad -f -H "Content-Type: application/json" -d '{"self": true}' "$B/api/unforget" | json 'd == {"ok": True}'
+ask -f "$B/api/ping" | json '[e["device"] for e in d["forgotten"]] == ["iphone"]' "api/unforget self of the iPad, not forgotten"
+check "the iPhone's own calls and ferry unforget don't bring it back; the iPad's unforget of itself adds nothing"
+ask -f -H "Content-Type: application/json" -d '{"self": true}' "$B/api/unforget" | json 'd == {"ok": True}'
+ask -f "$B/api/ping" | json '[(e["device"], e["forgotten"]) for e in d["forgotten"]] == [("iphone", False)]' "unforget self"
+"$ferry" list --json | json '"iphone" in [x["id"] for x in d["devices"]]' "api/unforget self: the iPhone listed"
 ask -f -o /dev/null -H "Content-Type: application/json" -d "{\"endpoint\": \"$ep\", $sub, \"direct\": true}" "$B/api/subscribe"
 json 'len(d) == 1' "the iPhone brought back subscribes: $(cat "$STATE/push.json")" < "$STATE/push.json"
 ask -f -o /dev/null -H "Content-Type: application/json" -d "{\"endpoint\": \"$ep\"}" "$B/api/unsubscribe"
-check "ferry unforget: the iPhone is back, with a tombstone, and subscribes again"
+check "api/unforget {self: true}: the iPhone added again is back, with a tombstone, and subscribes again"
 
 expect 400 "api/relay via someone else's computer" ask -H "Content-Type: application/json" \
   -d '{"via": "https://other.tail0.ts.net/ferry/"}' "$B/api/relay"

@@ -86,6 +86,10 @@ public struct HTTPBackend: FerryBackend {
         try await post(machine, "api/unforget", ["device": device])
     }
 
+    public func unforgetSelf(on machine: URL) async throws {
+        try await post(machine, "api/unforget", ["self": true])
+    }
+
     /// `api/upload` for one file, as `send` makes it: also what the share extension's background session sends.
     public static func uploadRequest(_ machine: URL, name: String, type: String, clip: Bool,
                                      timeout: TimeInterval = timeout) -> URLRequest {

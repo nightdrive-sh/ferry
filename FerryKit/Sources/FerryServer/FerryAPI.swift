@@ -21,18 +21,20 @@ public struct FerryAPI: Sendable {
     let box: Box
     let pusher: Pusher
     let forgotten: Forgotten
+    let phones: Phones
     let clock: @Sendable () -> TimeInterval
     let machines: @Sendable () async -> [[String: JSONValue]]
     private let grouping = Grouping()
 
     public init(config: ServerConfig, system: any FerrySystem, tailnet: Tailnet, box: Box, pusher: Pusher, forgotten: Forgotten,
-                clock: @escaping @Sendable () -> TimeInterval, machines: @escaping @Sendable () async -> [[String: JSONValue]]) {
+                phones: Phones, clock: @escaping @Sendable () -> TimeInterval, machines: @escaping @Sendable () async -> [[String: JSONValue]]) {
         self.config = config
         self.system = system
         self.tailnet = tailnet
         self.box = box
         self.pusher = pusher
         self.forgotten = forgotten
+        self.phones = phones
         self.clock = clock
         self.machines = machines
     }
@@ -48,12 +50,14 @@ public struct FerryAPI: Sendable {
             if let denied = await gate(req, api: path.hasPrefix("/api/") && !path.hasPrefix("/api/file/"), origin: origin) {
                 res = denied
             } else {
+                if path.hasPrefix("/api/") { await recordAsker(req) }
                 res = await get(req, path)
             }
         case "POST":
             if let denied = await gate(req, api: true, origin: origin) {
                 res = denied
             } else {
+                await recordAsker(req)
                 do { res = try await post(req, path) } catch { res = .text(400, "Bad request") }
             }
         default:
@@ -101,9 +105,23 @@ public struct FerryAPI: Sendable {
 
     /// The asking device's tailnet name (tailscale serve gives its address)
     func who(_ req: HTTPRequest) async -> String {
-        let ip = (req.headers["X-Forwarded-For"] ?? "").split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-        let name = await tailnet.device(ip: ip)
+        let name = await asker(req)
         return name.isEmpty ? "your phone" : name
+    }
+
+    /// The asking device's short tailnet name, "" when Tailscale can't name it
+    func asker(_ req: HTTPRequest) async -> String {
+        let ip = (req.headers["X-Forwarded-For"] ?? "").split(separator: ",").first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
+        return await tailnet.device(ip: ip)
+    }
+
+    /// docs/protocol.md › Forgetting a device: a phone or a tablet is in the device list once it has used Ferry here.
+    /// A computer is listed when it answers as Ferry, so its own calls aren't recorded.
+    func recordAsker(_ req: HTTPRequest) async {
+        let name = await asker(req)
+        guard !name.isEmpty,
+              await tailnet.view().peers.contains(where: { $0.id == name && TailnetView.phoneOSes.contains($0.os) }) else { return }
+        await phones.used(by: name)
     }
 
     /// Seconds since this computer was used, as the protocol counts them: 0 while in use
@@ -203,8 +221,16 @@ public struct FerryAPI: Sendable {
             if await forgotten.ids.contains(device) { await pusher.drop(devices: [device]) }
             return ok
         case "/api/forget", "/api/unforget":
+            let body = try await json(req, limit: 8192)
+            if path == "/api/unforget", body["self"] as? Bool == true {
+                // A phone just added again with Add Device: it brings itself back if it was forgotten. Nothing is
+                // recorded otherwise, so the other computers have nothing new to merge.
+                let me = await asker(req)
+                if !me.isEmpty, await forgotten.ids.contains(me) { await forgotten.decide(me, forget: false) }
+                return ok
+            }
             // Forgotten on every computer: the others merge this one's list from its api/ping
-            guard let device = try await json(req, limit: 8192)["device"] as? String, Forgotten.isDeviceName(device) else {
+            guard let device = body["device"] as? String, Forgotten.isDeviceName(device) else {
                 return .text(400, "Not a device's tailnet name")
             }
             await forgotten.decide(device, forget: path == "/api/forget")

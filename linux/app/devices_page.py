@@ -1,6 +1,6 @@
-"""The window's Devices page (More › Devices…): the owner's other devices, each forgotten on all of them with Forget, and
-the forgotten ones brought back (docs/protocol.md › Forgetting a device). It gets ferry_app as `ui`, as ferry_app gets
-bin/ferry as `core`: the helpers and the look are the window's, the forgetting is the server's."""
+"""The window's Devices page (More › Devices…): the owner's other devices, each forgotten on all of them with Forget
+(docs/protocol.md › Forgetting a device). Nothing here brings one back: adding it again does. It gets ferry_app as `ui`,
+as ferry_app gets bin/ferry as `core`: the helpers and the look are the window's, the forgetting is the server's."""
 from gi.repository import Gtk
 
 import look
@@ -27,25 +27,25 @@ class DevicesPage:
         self.widget.append(note)
 
     def fill(self, data):
-        rows = look.device_rows(data or {})
-        shown = [(d["id"], d.get("name"), d.get("kind"), forgotten) for d, forgotten in rows]
+        devices = (data or {}).get("devices") or []
+        shown = [(d["id"], d.get("name"), d.get("kind")) for d in devices]
         if shown == self.shown:   # a refresh that changes nothing leaves the buttons be
             return
         self.shown = shown
         while self.list.get_first_child():
             self.list.remove(self.list.get_first_child())
-        self.empty.set_visible(not rows)
-        for device, forgotten in rows:
-            self.list.append(self.row(device, forgotten))
+        self.empty.set_visible(not devices)
+        for device in devices:
+            self.list.append(self.row(device))
 
-    def row(self, device, forgotten):
+    def row(self, device):
         ui = self.ui
         row = Gtk.ListBoxRow(activatable=False)
         box = Gtk.Box(spacing=10)
         tile = Gtk.Box(halign=Gtk.Align.START, valign=Gtk.Align.CENTER)
         tile.set_size_request(36, 36)
         tile.add_css_class("tile")
-        icon = ui.ICONS.image(look.device_icon(device), "dim" if forgotten else "accent", 16)
+        icon = ui.ICONS.image(look.device_icon(device), "accent", 16)
         icon.set_halign(Gtk.Align.CENTER)
         icon.set_valign(Gtk.Align.CENTER)
         icon.set_size_request(36, 36)
@@ -53,20 +53,17 @@ class DevicesPage:
         box.append(tile)
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, valign=Gtk.Align.CENTER)
         text.set_hexpand(True)
-        name = ui.label(device.get("name") or device["id"], "item", *(("dim",) if forgotten else ()), ellipsize=True)
+        name = ui.label(device.get("name") or device["id"], "item", ellipsize=True)
         name.set_max_width_chars(1)   # the row's width, not the name's, decides
         text.append(name)
-        if forgotten:
-            text.append(ui.label("Forgotten", "meta"))
         box.append(text)
-        action = ui.button("Bring Back" if forgotten else "Forget", None, "pill",
-                           tooltip=f"{'Bring back' if forgotten else 'Forget'} {device.get('name') or device['id']}",
-                           on=lambda: self.decide(device, not forgotten, action))
+        action = ui.button("Forget", None, "pill", tooltip=f"Forget {device.get('name') or device['id']}",
+                           on=lambda: self.forget(device, action))
         action.set_valign(Gtk.Align.CENTER)
         box.append(action)
         row.set_child(box)
         return row
 
-    def decide(self, device, forget, action):
+    def forget(self, device, action):
         action.set_sensitive(False)
-        self.ui.background(lambda: self.ui.core.decide(device["id"], forget), lambda _: self.refresh())
+        self.ui.background(lambda: self.ui.core.decide(device["id"], True), lambda _: self.refresh())
