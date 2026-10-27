@@ -38,6 +38,9 @@ for Add Device's QR code in the Camera).
       doesn't list it. A code copied from Received on the iPhone doesn't reach the Mac's clipboard (Universal
       Clipboard).
 - [ ] A screenshot copied to the clipboard lands as an image: on the clipboard and in Downloads.
+- [ ] A photo copied in Photos (Copy Photo; a HEIC one and a JPEG one) lands as `clipboard.jpg` of a few MB, not a PNG
+      of 20: on the Mac's clipboard (pastes in Preview › New from Clipboard) and on Nightdrive's (`wl-paste --list-types`
+      says `image/jpeg`, and it pastes in a browser). A screenshot still lands as `clipboard.png`.
 - [ ] Ferry opened from the background after a while sends at once, to the computer last known to be in use.
 - [ ] With one computer asleep, leave Ferry (home screen) during a poll and reopen it: the header doesn't fall to "0/2
       online", and Send Clipboard goes to the computer in use.

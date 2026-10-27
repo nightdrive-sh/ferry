@@ -122,7 +122,7 @@ installs Ferry from here.
   `ios/uitest.sh --down Nightdrive` (DownTests) and `--down MacBook,Nightdrive` (OfflineTests).
 - **The simulator** is picked by id, not by name: the SDK is newer than the installed runtime, so `name=` finds no
   "latest" OS.
-- **Debug launch arguments** used by the tests: `-reset`, `-mock`, `-seedClipboard TEXT`, `-seedClipboardImage`,
+- **Debug launch arguments** used by the tests: `-reset`, `-mock`, `-seedClipboard TEXT`, `-seedClipboardImage`, `-seedClipboardPhoto jpeg|heic`,
   `-seedMachines`, `-pasteHelpSeen YES`, and `-shareText TEXT` / `-shareImage`, which show the share view over the app. The test runner must not write the clipboard itself: the app's read would stop
   at iOS's Paste prompt, which blocks its main thread.
 - **Screenshots:** `xcrun simctl io <id> screenshot`. Don't drive the Simulator window: XCUITest runs headless, and the

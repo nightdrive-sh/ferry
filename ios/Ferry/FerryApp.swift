@@ -1,6 +1,8 @@
 import FerryKit
+import ImageIO
 import UIKit
 import SwiftUI
+import UniformTypeIdentifiers
 
 @main
 struct FerryApp: App {
@@ -79,6 +81,19 @@ struct FerryApp: App {
             UIPasteboard.general.image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { c in
                 UIColor.systemPurple.setFill()
                 c.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+            }
+        }
+        // -seedClipboardPhoto jpeg|heic: a photo as Photos' Copy leaves it, the file's own bytes under its type only
+        if let i = args.firstIndex(of: "-seedClipboardPhoto"), i + 1 < args.count {
+            let type: UTType = args[i + 1] == "heic" ? .heic : .jpeg
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { c in
+                UIColor.systemTeal.setFill()
+                c.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+            }
+            let data = NSMutableData()
+            if let cg = image.cgImage, let dest = CGImageDestinationCreateWithData(data, type.identifier as CFString, 1, nil) {
+                CGImageDestinationAddImage(dest, cg, nil)
+                if CGImageDestinationFinalize(dest) { UIPasteboard.general.setItems([[type.identifier: data as Data]]) }
             }
         }
         #endif

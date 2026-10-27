@@ -1,28 +1,29 @@
 import FerryKit
+import ImageIO
 import UIKit
 import UniformTypeIdentifiers
 
 /// What Send Clipboard sends. Reading the pasteboard shows iOS's Paste prompt unless the person allowed Ferry
-/// "Paste from Other Apps" in Settings; the checks before it (hasImages, hasStrings) don't.
+/// "Paste from Other Apps" in Settings; the checks before it (hasImages, contains(pasteboardTypes:), hasStrings) don't.
 @MainActor
 enum Pasteboard {
     /// Whether the clipboard holds something Ferry would read, asked without reading it (no Paste prompt). Only a read
     /// makes iOS ask, and only after that does Settings list Paste from Other Apps for Ferry.
     static var hasContent: Bool {
         let pb = UIPasteboard.general
-        return pb.hasImages || pb.hasURLs || pb.hasStrings
+        return hasImage(pb) || pb.hasURLs || pb.hasStrings
     }
 
     /// An image wins over text when both are there (a screenshot copied with its caption is meant as the picture).
     static func payload() -> SendPayload? {
         let pb = UIPasteboard.general
-        if pb.hasImages, let image = pb.image, let data = image.pngData() {
+        if hasImage(pb), let image = image(pb) {
             let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
-            let file = folder.appending(path: "clipboard.png")
+            let file = folder.appending(path: image.name)
             do {
                 try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-                try data.write(to: file)
-                return .file(file, name: "clipboard.png", type: "image/png", clip: true)
+                try image.data.write(to: file)
+                return .file(file, name: image.name, type: image.type, clip: true)
             } catch {
                 return nil
             }
@@ -32,6 +33,42 @@ enum Pasteboard {
             return .text(s, clip: true)
         }
         return nil
+    }
+
+    /// The image as the app that copied it gave it, not `pb.image` encoded anew: a photo copied in Photos came as a
+    /// PNG of over 20 MB where its JPEG was a few. The first of its own types wins, in the order the app put them (a
+    /// UIImage says PNG first, so a screenshot stays sharp). A HEIC becomes a JPEG, its metadata kept, since apps on
+    /// Linux paste no HEIC from the clipboard.
+    private static func image(_ pb: UIPasteboard) -> (data: Data, name: String, type: String)? {
+        for type in pb.types {
+            switch type {
+            case UTType.jpeg.identifier:
+                if let data = pb.data(forPasteboardType: type) { return (data, "clipboard.jpg", "image/jpeg") }
+            case UTType.png.identifier:
+                if let data = pb.data(forPasteboardType: type) { return (data, "clipboard.png", "image/png") }
+            case UTType.heic.identifier, UTType.heif.identifier:
+                if let data = pb.data(forPasteboardType: type), let jpeg = jpeg(from: data) {
+                    return (jpeg, "clipboard.jpg", "image/jpeg")
+                }
+            default:
+                continue
+            }
+        }
+        guard let data = pb.image?.pngData() else { return nil }
+        return (data, "clipboard.png", "image/png")
+    }
+
+    /// hasImages doesn't count a HEIC on its own (UIPasteboard's image types predate it)
+    private static func hasImage(_ pb: UIPasteboard) -> Bool {
+        pb.hasImages || pb.contains(pasteboardTypes: [UTType.heic.identifier, UTType.heif.identifier])
+    }
+
+    private static func jpeg(from heic: Data) -> Data? {
+        guard let source = CGImageSourceCreateWithData(heic as CFData, nil) else { return nil }
+        let out = NSMutableData()
+        guard let dest = CGImageDestinationCreateWithData(out, UTType.jpeg.identifier as CFString, 1, nil) else { return nil }
+        CGImageDestinationAddImageFromSource(dest, source, 0, [kCGImageDestinationLossyCompressionQuality: 0.9] as CFDictionary)
+        return CGImageDestinationFinalize(dest) ? out as Data : nil
     }
 
     /// A text copied from Received or a notification. A code or a password stays on this phone: Universal Clipboard

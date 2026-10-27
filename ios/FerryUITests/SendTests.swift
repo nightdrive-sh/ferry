@@ -30,6 +30,27 @@ final class SendTests: XCTestCase {
         launch(["-seedClipboardImage"])
         app.buttons["sendClipboard"].tap()
         XCTAssertTrue(app.staticTexts["Sent to MacBook"].waitForExistence(timeout: 8))
+        XCTAssertEqual(lastFile(on: URL(string: "http://127.0.0.1:47271/ferry/")!)?["type"] as? String, "image/png")
+    }
+
+    /// A photo goes as the JPEG Photos copied, not encoded anew as a PNG five times its size
+    func testSendClipboardPhotoAsItsJPEG() {
+        launch(["-seedClipboardPhoto", "jpeg"])
+        app.buttons["sendClipboard"].tap()
+        XCTAssertTrue(app.staticTexts["Sent to MacBook"].waitForExistence(timeout: 8))
+        let file = lastFile(on: URL(string: "http://127.0.0.1:47271/ferry/")!)
+        XCTAssertEqual(file?["name"] as? String, "clipboard.jpg")
+        XCTAssertEqual(file?["type"] as? String, "image/jpeg")
+    }
+
+    /// A HEIC goes as a JPEG: apps on Linux paste no HEIC from the clipboard
+    func testSendClipboardHEICAsAJPEG() {
+        launch(["-seedClipboardPhoto", "heic"])
+        app.buttons["sendClipboard"].tap()
+        XCTAssertTrue(app.staticTexts["Sent to MacBook"].waitForExistence(timeout: 8))
+        let file = lastFile(on: URL(string: "http://127.0.0.1:47271/ferry/")!)
+        XCTAssertEqual(file?["name"] as? String, "clipboard.jpg")
+        XCTAssertEqual(file?["type"] as? String, "image/jpeg")
     }
 
     func testAHandPickLastsOneSend() {
