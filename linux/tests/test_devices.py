@@ -43,6 +43,17 @@ class Devices(unittest.TestCase):
         self.assertTrue(d[0]["inUse"])
         self.assertEqual(d[0]["name"], "Nightdrive PC")
 
+    def test_a_device_not_there_is_named_in_the_reason(self):   # not "no device yet" (ferry text --to x)
+        devices, ferry.devices = ferry.devices, lambda: devices(STATUS)
+        try:
+            self.assertEqual(ferry.pick_device(["--to", "toaster", "hi"]),
+                             (None, ["hi"], "No device toaster: see ferry devices"))
+            self.assertEqual(ferry.pick_device(["--to"])[2], "--to needs a device: see ferry devices")
+            dev, rest, why = ferry.pick_device(["--to", "iphone", "hi"])
+            self.assertEqual((dev["id"], rest, why), ("iphone", ["hi"], ""))
+        finally:
+            ferry.devices = devices
+
     def test_a_phone_is_listed_once_it_has_used_ferry(self):   # docs/protocol.md › Forgetting a device
         os.remove(os.path.join(self.tmp.name, "phones.json"))
         self.assertEqual([x["id"] for x in ferry.devices(STATUS)], ["nightdrive-pc", "studio"])

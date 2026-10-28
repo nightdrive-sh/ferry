@@ -2522,20 +2522,19 @@ def send(args, dev):
 
 
 def pick_device(args):
-    """--to DEVICE taken out of args: (the device, the rest), or (None, args) with the reason printed."""
+    """--to DEVICE taken out of args: (the device, the rest, ""), or (None, args, why not)."""
     want = ""
     if "--to" in args:
         i = args.index("--to")
         if i + 1 >= len(args):
-            print("--to needs a device: see ferry devices", file=sys.stderr)
-            return None, args
+            return None, args, "--to needs a device: see ferry devices"
         want, args = args[i + 1], args[:i] + args[i + 2:]
     devs = devices()
     dev = next((d for d in devs if want in (d["id"], d["name"])), None) if want else target(devs)
     if not dev:
-        print(f"No device {want}: see ferry devices" if want else
-              "No other device yet: add your phone with Add Device in Ferry's menu (or ferry qr)", file=sys.stderr)
-    return dev, args
+        return None, args, (f"No device {want}: see ferry devices" if want else
+                            "No other device yet: add your phone with Add Device in Ferry's menu (or ferry qr)")
+    return dev, args, ""
 
 
 def failed(err):
@@ -2689,9 +2688,13 @@ def main():
     elif cmd == "list":
         print_list()
     elif cmd in ("send", "add", "pick", "text", "send-clipboard"):
-        dev, rest = pick_device(a[1:])
+        dev, rest, why = pick_device(a[1:])
         if not dev:
-            return 1 if cmd == "send" else failed("No other device yet: add one with Add Device in Ferry's menu")
+            # A device named with --to that isn't there is that, not "no device yet"
+            if cmd == "send":
+                print(why, file=sys.stderr)
+                return 1
+            return failed(why)
         if cmd == "send":
             return send(rest, dev)
         if cmd == "add":
