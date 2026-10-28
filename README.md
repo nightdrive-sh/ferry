@@ -4,6 +4,11 @@ A mailbox between your devices, over [Tailscale](https://tailscale.com).
 
 Send texts, links, photos, files and the clipboard between your phone and your computers. Copy a code on the phone, press Send Clipboard, paste it on the computer. What a computer sends waits in its box until your phone or another computer picks it up, and the phone is notified when a computer sends it something.
 
+<p align="center">
+  <img src="docs/images/iphone.jpg" width="240" alt="Ferry on an iPhone: a photo, a Wi-Fi password, a boarding pass, an address and links received from a MacBook, and the Send Clipboard button"><br>
+  <sub>The iPhone app: what your computers sent, and Send Clipboard.</sub>
+</p>
+
 Tailscale connects the devices, encrypts the traffic and keeps Ferry off the internet. Each computer answers only its owner, and only on the tailnet (`tailscale serve`, not Funnel). Your texts and files never pass through a server of ours: only a notification does, encrypted for the phone, on its way to Apple. Ferry trusts everyone who can use the computer it runs on, so it suits a computer that is yours alone. A computer's tailnet name shows in public certificate logs, as every Tailscale HTTPS name does.
 
 Ferry is made by [Nightdrive](https://nightdrive.sh). More, and the privacy policy: [nightdrive.sh/ferry](https://nightdrive.sh/ferry).
@@ -54,6 +59,11 @@ A computer that ran Nightdrive's Ferry plugin keeps everything: its state (the b
 Files from your devices go to Downloads, with a notification. What a phone sends with Send Clipboard lands on the computer's clipboard (wl-clipboard on Wayland, xclip on X11). A phone without the app (an Android phone) can use the page a Linux computer serves, which does in the browser what the app does: the QR code's page leads to it, and it can be added to the Home Screen. The Mac app serves no such page. Ferry sends to the computer you're using: on GNOME it asks Mutter how long the computer has been idle, on KDE, Hyprland and other Wayland desktops the compositor, on X11 the X server.
 
 **For a desktop's own Ferry menu** (Nightdrive's top bar is one): `ferry list --json` is the box and Ferry's state (with `setup`, what stands in the way and what to do, and `update`, a newer release), and an executable `~/.config/ferry/hook` runs with `changed` when the box changes or a send goes, and with `picked` after `ferry pick`'s dialog.
+
+<p align="center">
+  <img src="docs/images/nightdrive-menu.jpg" width="600" alt="Ferry's menu in Nightdrive's top bar: a link and a photo from the iPhone, a shopping list and a PDF from another computer, and Send Clipboard"><br>
+  <sub>Ferry's menu in <a href="https://nightdrive.sh">Nightdrive</a>'s top bar.</sub>
+</p>
 
 To remove Ferry: `ferry disable`, then remove `~/.local/lib/ferry`, `~/.local/bin/ferry`, `~/.config/systemd/user/ferry.service` and the files named `sh.nightdrive.Ferry*` and `*ferry*` that the install script's header lists (the app's entry, icons, autostart and file manager menus). Its state stays in `~/.local/share/ferry`.
 
