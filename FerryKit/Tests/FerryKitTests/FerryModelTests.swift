@@ -953,6 +953,31 @@ func tempCache() -> FileCache {
         #expect(!FileManager.default.fileExists(atPath: first.path()))
     }
 
+    @Test func aFileWithASpaceInItsNameIsDownloadedOnce() async throws {   // URL.path() would say "Night%20drive"
+        let fake = FakeBackend()
+        await fake.set(nd, name: "Nightdrive", idle: 0, items: [makeFile("Night drive", size: 3)])
+        let m = try model(fake, machines: [(nd, "Nightdrive")])
+        await m.refresh()
+        let r = try #require(m.received.first)
+        let first = try await m.download(r)
+        #expect(first.lastPathComponent == "Night drive.png")
+        #expect(try await m.download(r) == first)
+        #expect(await fake.calls.filter { $0.hasPrefix("download") }.count == 1)
+    }
+
+    @Test func aCacheInAFolderWithASpaceFindsItsFiles() async throws {
+        let fake = FakeBackend()
+        await fake.set(nd, name: "Nightdrive", idle: 0, items: [makeFile("f1", size: 3)])
+        let cache = FileCache(directory: FileManager.default.temporaryDirectory.appending(path: "cache \(UUID().uuidString)"))
+        let m = try model(fake, machines: [(nd, "Nightdrive")], cache: cache)
+        await m.refresh()
+        await m.prefetching?.value
+        let r = try #require(m.received.first)
+        #expect(cache.file(for: r) != nil)
+        cache.prune(keeping: [])
+        #expect(cache.file(for: r) == nil)
+    }
+
     @Test func errorMessages() {
         #expect(FerryError.unreachable(machine: "nightdrive").message == "Can't reach nightdrive")
         #expect(FerryError.refused(status: 404, message: "Not in the box any more").message == "Not in the box any more")

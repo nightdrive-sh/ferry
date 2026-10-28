@@ -584,7 +584,7 @@ public enum SendState: Equatable, Sendable {
     }
 
     public func download(_ r: Received) async throws -> URL {
-        if let file = downloaded[r.id], FileManager.default.fileExists(atPath: file.path()) { return file }
+        if let file = downloaded[r.id], FileManager.default.fileExists(atPath: file.path(percentEncoded: false)) { return file }
         if let file = cache?.file(for: r) {
             downloaded[r.id] = file
             return file

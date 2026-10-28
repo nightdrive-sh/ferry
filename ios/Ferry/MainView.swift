@@ -205,7 +205,7 @@ struct MainView<Bar: View>: View {
         guard thumbnails[r.id] == nil, r.item.kind == .file, (r.item.type ?? "").hasPrefix("image/"),
               (r.item.size ?? 0) < 30_000_000,   // a thumbnail isn't worth a huge download
               let url = try? await model.download(r),
-              let image = await UIImage(contentsOfFile: url.path())?.byPreparingThumbnail(ofSize: CGSize(width: 150, height: 150))
+              let image = await UIImage(contentsOfFile: url.path(percentEncoded: false))?.byPreparingThumbnail(ofSize: CGSize(width: 150, height: 150))
         else { return }
         thumbnails[r.id] = image
     }

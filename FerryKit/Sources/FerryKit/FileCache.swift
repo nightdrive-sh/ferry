@@ -19,7 +19,7 @@ public struct FileCache: Sendable {
 
     public func file(for r: Received) -> URL? {
         let folder = folderURL(r.id)
-        guard let name = try? FileManager.default.contentsOfDirectory(atPath: folder.path()).first else { return nil }
+        guard let name = try? FileManager.default.contentsOfDirectory(atPath: folder.path(percentEncoded: false)).first else { return nil }
         return folder.appending(path: name)
     }
 
@@ -41,7 +41,7 @@ public struct FileCache: Sendable {
     /// Everything that no longer belongs to an item still in a box goes.
     public func prune(keeping ids: Set<String>) {
         let keep = Set(ids.map(Self.folder(for:)))
-        for name in (try? FileManager.default.contentsOfDirectory(atPath: directory.path())) ?? [] where !keep.contains(name) {
+        for name in (try? FileManager.default.contentsOfDirectory(atPath: directory.path(percentEncoded: false))) ?? [] where !keep.contains(name) {
             try? FileManager.default.removeItem(at: directory.appending(path: name))
         }
     }
