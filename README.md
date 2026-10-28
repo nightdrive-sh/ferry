@@ -8,13 +8,13 @@ Tailscale connects the devices, encrypts the traffic and keeps Ferry off the int
 
 Ferry is made by [Nightdrive](https://nightdrive.sh). More, and the privacy policy: [nightdrive.sh/ferry](https://nightdrive.sh/ferry).
 
-**Ferry is in public beta.** The iPhone app is on TestFlight, and the Mac and Linux versions are on the [releases](https://github.com/nightdrive-sh/ferry/releases) page. Tell us what works and what doesn't: [Feedback and support](#feedback-and-support).
+**Ferry is in public beta.** The iPhone app is on [TestFlight](https://testflight.apple.com/join/qSG41FTp), and the Mac and Linux versions are on the [releases](https://github.com/nightdrive-sh/ferry/releases) page. Tell us what works and what doesn't: [Feedback and support](#feedback-and-support).
 
 ## Getting it
 
 You need Tailscale on every device, signed in as the same user, with **MagicDNS and HTTPS certificates** turned on for your tailnet (the admin console's DNS page). Then a computer running Ferry, and the iPhone app.
 
-- **iPhone** (iOS 26): "Ferry: Device Mailbox", a public beta on TestFlight (the link is at [nightdrive.sh/ferry](https://nightdrive.sh/ferry)); on the App Store at 1.0. It finds your computers running Ferry by itself; Add Device on one of them shows a QR code that adds it.
+- **iPhone** (iOS 26): "Ferry: Device Mailbox", a public beta on [TestFlight](https://testflight.apple.com/join/qSG41FTp); on the App Store at 1.0. It finds your computers running Ferry by itself; Add Device on one of them shows a QR code that adds it.
 - **Mac** (macOS 26): the `.dmg` from [nightdrive.sh/ferry](https://nightdrive.sh/ferry) or the [releases](https://github.com/nightdrive-sh/ferry/releases). A menu bar app: drop files on its icon to send them, and its popover shows what arrived. It keeps itself up to date, and works with Tailscale from the App Store, the standalone app or the open-source `tailscaled`.
 - **Linux**: one line, below ([On Linux](#on-linux)).
 
