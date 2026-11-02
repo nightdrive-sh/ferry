@@ -7,19 +7,19 @@ import struct
 import threading
 import unittest
 
-from load import bin_ferry
+from load import idle
 
 
 class Seconds(unittest.TestCase):
     def test_in_use_within_the_last_minute(self):   # docs/protocol.md: 0 on every system
-        self.assertEqual(bin_ferry.idle_seconds(59999), 0)
+        self.assertEqual(idle.idle_seconds(59999), 0)
 
     def test_idle_after_it(self):
-        self.assertEqual(bin_ferry.idle_seconds(61500), 61)
+        self.assertEqual(idle.idle_seconds(61500), 61)
 
     def test_mutters_answer(self):   # GNOME, Wayland and X11
-        self.assertEqual(bin_ferry.mutter_ms("(uint64 61234,)\n"), 61234)
-        self.assertIsNone(bin_ferry.mutter_ms(""))
+        self.assertEqual(idle.mutter_ms("(uint64 61234,)\n"), 61234)
+        self.assertIsNone(idle.mutter_ms(""))
 
     def test_the_first_source_that_knows(self):
         calls = []
@@ -29,9 +29,9 @@ class Seconds(unittest.TestCase):
                 calls.append(answer)
                 return answer
             return f
-        self.assertEqual(bin_ferry.idle_for({}, sources=[source(None), source(120), source(0)]), 120)
+        self.assertEqual(idle.idle_for({}, sources=[source(None), source(120), source(0)]), 120)
         self.assertEqual(calls, [None, 120])
-        self.assertIsNone(bin_ferry.idle_for({}, sources=[source(None)]))
+        self.assertIsNone(idle.idle_for({}, sources=[source(None)]))
 
 
 # --- A pretend Wayland compositor -------------------------------------------------------------------------------------
@@ -110,7 +110,7 @@ class WaylandIdle(unittest.TestCase):
     def start(self, globals_):
         self.compositor = Compositor(globals_)
         self.clock = Clock()
-        self.idle = bin_ferry.WaylandIdle(connect=lambda: self.compositor.client, clock=self.clock)
+        self.idle = idle.WaylandIdle(connect=lambda: self.compositor.client, clock=self.clock)
         self.done = threading.Event()
 
         def watch():

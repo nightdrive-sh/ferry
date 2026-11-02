@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from load import bin_ferry, config, owner
+from load import bin_ferry, config, desktop, owner
 from test_devices import STATUS
 
 
@@ -58,7 +58,7 @@ class State(unittest.TestCase):
         self.tmp = tempfile.TemporaryDirectory()
         self.state, config.STATE = config.STATE, self.tmp.name
         self.hooks = []
-        self.hook, bin_ferry.changed = bin_ferry.changed, lambda: self.hooks.append(1)
+        self.hook, desktop.changed = desktop.changed, lambda: self.hooks.append(1)
         with open(os.path.join(self.tmp.name, "machines.json"), "w") as f:
             json.dump([{"id": "nightdrive-pc", "name": "Nightdrive PC", "url": "https://pc/ferry/", "idle": 0},
                        {"id": "studio", "name": "Studio", "url": "https://studio/ferry/", "idle": 900}], f)
@@ -67,7 +67,7 @@ class State(unittest.TestCase):
 
     def tearDown(self):
         config.STATE = self.state
-        bin_ferry.changed = self.hook
+        desktop.changed = self.hook
         self.tmp.cleanup()
 
     def subscribe(self, endpoint, device, direct=True):

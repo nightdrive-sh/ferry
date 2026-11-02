@@ -27,7 +27,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import devices_page  # noqa: E402
 import look  # noqa: E402
-from ferry import config  # noqa: E402
+from ferry import config, desktop, notices  # noqa: E402
 
 core = None              # bin/ferry, as a module (main())
 REFRESH = 5              # seconds between looks at the box and the devices while the window shows
@@ -531,7 +531,7 @@ class Window(Gtk.ApplicationWindow):
         if any(i.get("to") == "computer" and not i.get("seen") for i in self.data.get("items") or []):
             for i in self.data["items"]:
                 i["seen"] = True
-            background(lambda: (core.mark_seen(), core.changed()), lambda _: self.app.recount())
+            background(lambda: (core.mark_seen(), desktop.changed()), lambda _: self.app.recount())
 
     # MARK: Drawing
 
@@ -652,7 +652,7 @@ class Window(Gtk.ApplicationWindow):
             cmd.set_hexpand(True)
             row.append(cmd)
             row.append(button(None, "copy", "small-circle", tooltip="Copy",
-                              on=lambda c=step["command"]: background(lambda: core.copy_text(c))))
+                              on=lambda c=step["command"]: background(lambda: desktop.copy_text(c))))
             box.append(row)
         buttons = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
         buttons.set_margin_top(4)
@@ -784,7 +784,7 @@ class Window(Gtk.ApplicationWindow):
     def row_menu(self, row, item, x, y):
         if item.get("kind") == "file":
             entries = [("Open", lambda: self.open_file(item)),
-                       ("Show in Files", lambda: background(lambda: core.show_in_files(item["path"])))]
+                       ("Show in Files", lambda: background(lambda: desktop.show_in_files(item["path"])))]
         else:
             entries = [("Copy", lambda: self.copy(item, row))]
             if look.link(item.get("text")):
@@ -875,7 +875,7 @@ class Window(Gtk.ApplicationWindow):
         addr.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
         row.append(addr)
         copy = button("Copy", None, "pill")
-        copy.connect("clicked", lambda b: (background(lambda: core.copy_text(address)), b.set_label("Copied"),
+        copy.connect("clicked", lambda b: (background(lambda: desktop.copy_text(address)), b.set_label("Copied"),
                                            GLib.timeout_add(1500, lambda: b.set_label("Copy") and False)))
         row.append(copy)
         box.append(row)
@@ -973,7 +973,7 @@ class Window(Gtk.ApplicationWindow):
                 for it in [i for i in items if i.get("to") == "computer"]:
                     core.drop_file(it)
                     items.remove(it)
-            core.changed()
+            desktop.changed()
         background(work, lambda _: self.refresh())
 
     # MARK: Received items
@@ -989,7 +989,7 @@ class Window(Gtk.ApplicationWindow):
 
     def copy(self, item, row):
         # A code or a password leaves the box once copied (docs/protocol.md › Codes and passwords)
-        background(lambda: core.copy_text(item.get("text") or "", sensitive=core.secret(item)) and core.copied(item),
+        background(lambda: desktop.copy_text(item.get("text") or "", sensitive=core.secret(item)) and core.copied(item),
                    lambda _: core.secret(item) and self.refresh())
         if row is not None:
             title = row.title
@@ -1001,16 +1001,16 @@ class Window(Gtk.ApplicationWindow):
     def open_file(self, item):
         if not os.path.exists(item.get("path", "")):
             return self.refresh()   # moved or deleted: its row goes
-        background(lambda: core.open_path(item["path"]))
+        background(lambda: desktop.open_path(item["path"]))
 
     def open_uri(self, uri):
         try:
             Gio.AppInfo.launch_default_for_uri(uri, None)
         except GLib.Error:
-            background(lambda: subprocess.run(["xdg-open", uri], env=core.desktop_env()))
+            background(lambda: subprocess.run(["xdg-open", uri], env=desktop.desktop_env()))
 
     def remove(self, item):
-        background(lambda: (core.remove(item["id"]), core.changed()), lambda _: self.refresh())
+        background(lambda: (core.remove(item["id"]), desktop.changed()), lambda _: self.refresh())
 
     # MARK: Setup
 
@@ -1122,7 +1122,7 @@ class Window(Gtk.ApplicationWindow):
             if text and text.strip():
                 self.send(("text", text, True))
             else:   # GTK saw nothing: the desktop's own tools may (and GNOME's clipboard over X11)
-                background(core.paste_text, lambda t: self.send(("text", t, True)) if t and t.strip()
+                background(desktop.paste_text, lambda t: self.send(("text", t, True)) if t and t.strip()
                            else self.settle(("nothing",)))
         clip.read_text_async(None, read)
 
@@ -1307,7 +1307,7 @@ WATCHER = "org.kde.StatusNotifierWatcher"
 
 def pixmap(count, size):
     """The tray icon as SNI's (width, height, ARGB32 in network byte order)."""
-    current = os.environ.get("XDG_CURRENT_DESKTOP") or core.manager_env().get("XDG_CURRENT_DESKTOP", "")
+    current = os.environ.get("XDG_CURRENT_DESKTOP") or desktop.manager_env().get("XDG_CURRENT_DESKTOP", "")
     loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
     loader.set_size(size, size)
     white = look.tray_white(current, config_dirs=os.environ.get("XDG_CONFIG_DIRS", ""))
@@ -1604,17 +1604,17 @@ class App(Gtk.Application):
     def send_clipboard(self):
         """From the tray's menu, without the window in front: the desktop's clipboard tools (core's), a text."""
         def work():
-            text = core.paste_text()
+            text = desktop.paste_text()
             if not (text or "").strip():
-                core.notify("The clipboard has no text", "Copy a text or a link first")
+                notices.notify("The clipboard has no text", "Copy a text or a link first")
                 return
             devs = core.devices()
             dev = core.target(devs)
             if not dev:
-                core.notify("Couldn't send", "No device to send to: add one with Add Device")
+                notices.notify("Couldn't send", "No device to send to: add one with Add Device")
                 return
             err = core.deliver(dev, text=text, clip=True)
-            core.notify("Couldn't send" if err else f"Sent to {dev['name']}", err or look.oneline(text)[:120])
+            notices.notify("Couldn't send" if err else f"Sent to {dev['name']}", err or look.oneline(text)[:120])
         background(work)
 
     # MARK: The tray

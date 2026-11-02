@@ -81,9 +81,7 @@ import mimetypes
 import os
 import re
 import secrets
-import select
 import shutil
-import socket
 import struct
 import subprocess
 import sys
@@ -96,561 +94,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # The package beside bin/: ~/.local/bin/ferry is a link to bin/ferry, so the real path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-from ferry import config  # noqa: E402
-
-
-# GNOME, KDE, Hyprland and others, on Wayland and X11. Each tool runs with desktop_env(): the service has no display
-# variables of its own.
-DESKTOP_VARS = ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE",
-                "DBUS_SESSION_BUS_ADDRESS")
-_manager = (0.0, {})
-
-
-def manager_env():
-    """The user's service manager's environment, where GNOME and KDE (and Hyprland with uwsm) put the desktop's
-    variables when it starts; asked at most every few seconds."""
-    global _manager
-    if time.monotonic() - _manager[0] < 5:
-        return _manager[1]
-    try:
-        out = subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True, text=True,
-                             timeout=5).stdout
-    except (OSError, subprocess.SubprocessError):
-        out = ""
-    _manager = (time.monotonic(), dict(line.split("=", 1) for line in out.splitlines() if "=" in line))
-    return _manager[1]
-
-
-def desktop_env(base=None, manager=manager_env, x11="/tmp/.X11-unix"):
-    """The environment for a desktop tool: a command run on the desktop has the desktop's own; the service takes them
-    from the service manager, else from the sockets the desktop made (a desktop that told nobody, e.g. Hyprland started
-    by hand). A WAYLAND_DISPLAY whose socket is gone belongs to a session that ended."""
-    env = dict(os.environ if base is None else base)
-    if env.get("WAYLAND_DISPLAY") or env.get("DISPLAY"):
-        return env
-    runtime = env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}"
-    m = manager()
-    for k in DESKTOP_VARS:
-        if m.get(k) and not env.get(k):
-            env[k] = m[k]
-    if env.get("WAYLAND_DISPLAY") and not os.path.exists(os.path.join(runtime, env["WAYLAND_DISPLAY"])):
-        del env["WAYLAND_DISPLAY"]
-    if not env.get("WAYLAND_DISPLAY"):
-        with contextlib.suppress(OSError):
-            found = sorted(n for n in os.listdir(runtime) if re.fullmatch(r"wayland-\d+", n))
-            if found:
-                env["WAYLAND_DISPLAY"] = found[0]
-    if not env.get("DISPLAY"):
-        with contextlib.suppress(OSError):
-            found = sorted(int(n[1:]) for n in os.listdir(x11) if re.fullmatch(r"X\d+", n))
-            if found:
-                env["DISPLAY"] = f":{found[0]}"
-    return env
-
-
-def clip_tools(env, have=shutil.which):
-    """The clipboards to try, in order: Wayland's, then X11's. On a Wayland desktop X11's is XWayland's, which the
-    desktop shares with Wayland's: the way in on GNOME, whose Mutter has no protocol for a clipboard tool without a
-    window, when wl-clipboard's own way round that fails."""
-    out = []
-    if env.get("WAYLAND_DISPLAY") and have("wl-copy"):
-        out.append("wayland")
-    if env.get("DISPLAY") and have("xclip"):
-        out.append("x11")
-    return out
-
-
-def clip_run(cmds, data=None, env=None, run=subprocess.run, have=shutil.which, out=False):
-    """Runs cmds[tool] for the first clipboard that takes it: True (or with out, its output), else False (or None).
-    cmds[tool] may be a list of commands, tried in turn. A copy's tool stays behind to serve the clipboard, so its
-    output isn't waited for."""
-    env = desktop_env() if env is None else env
-    for tool in clip_tools(env, have):
-        for cmd in cmds[tool] if isinstance(cmds[tool][0], list) else [cmds[tool]]:
-            try:
-                r = run(cmd, input=data, env=env, stdout=subprocess.PIPE if out else subprocess.DEVNULL,
-                        stderr=subprocess.DEVNULL, timeout=10)
-            except (OSError, subprocess.SubprocessError):
-                continue
-            if r.returncode == 0:
-                return r.stdout if out else True
-    return None if out else False
-
-
-def wl_copy(args, sensitive):
-    """wl-copy's command. Sensitive: marked so a clipboard history (cliphist, Klipper) doesn't keep it, with a plain copy
-    after it for a wl-copy from before --sensitive (wl-clipboard 2.3), which refuses the option. xclip serves one type
-    only, so X11's copy can't carry the mark (x-kde-passwordManagerHint) beside the text."""
-    plain = ["wl-copy"] + args
-    return [["wl-copy", "--sensitive"] + args, plain] if sensitive else plain
-
-
-def copy_text(text, sensitive=False, **kw):
-    return clip_run({"wayland": wl_copy(["--type", "text/plain;charset=utf-8"], sensitive),
-                     "x11": ["xclip", "-selection", "clipboard", "-in"]}, text.encode(), **kw)
-
-
-def copy_file(path, kind, sensitive=False, **kw):
-    """A file (an image) onto the clipboard, as its type."""
-    with open(path, "rb") as f:
-        data = f.read()
-    return clip_run({"wayland": wl_copy(["--type", kind], sensitive),
-                     "x11": ["xclip", "-selection", "clipboard", "-t", kind, "-in"]}, data, **kw)
-
-
-def paste_text(**kw):
-    """The clipboard's text, or "". What isn't text is no text: xclip, asked for the text of an image that another
-    xclip serves (Ferry's own, from the phone, on GNOME), hands over the image's bytes."""
-    out = clip_run({"wayland": ["wl-paste", "--no-newline", "--type", "text"],
-                    "x11": ["xclip", "-selection", "clipboard", "-out"]}, out=True, **kw)
-    try:
-        text = out.decode() if out else ""
-    except UnicodeDecodeError:
-        return ""
-    return "" if "\0" in text else text
-
-
-def session_bus(env):
-    """The desktop's session bus's address, where notify-send's GDBus would look: the environment's, else systemd's
-    user bus; "" without one (a server)."""
-    if env.get("DBUS_SESSION_BUS_ADDRESS"):
-        return env["DBUS_SESSION_BUS_ADDRESS"]
-    path = os.path.join(env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}", "bus")
-    return f"unix:path={path}" if os.path.exists(path) else ""
-
-
-NOTIFICATIONS = ("org.freedesktop.Notifications", "/org/freedesktop/Notifications")   # the daemon's name, its path
-
-
-class GioBus:
-    """A connection of Ferry's own to the session bus at address, through PyGObject's Gio (ImportError where there is
-    none), whose notification daemon's signals go to on_signal(name, args) from a GLib main loop in a thread of its
-    own."""
-
-    def __init__(self, address, on_signal):
-        from gi.repository import Gio, GLib
-        self.Gio, self.GLib = Gio, GLib
-        # Not Gio.bus_get_sync's shared connection: that one ends the process when the bus goes (a logout), and it
-        # reads the bus's address from this process's environment, which the service's may not have.
-        ctx = GLib.MainContext.new()
-        ctx.push_thread_default()   # a subscription's signals come to the context that is the default where it's made
-        try:
-            self.conn = Gio.DBusConnection.new_for_address_sync(
-                address, Gio.DBusConnectionFlags.AUTHENTICATION_CLIENT | Gio.DBusConnectionFlags.MESSAGE_BUS_CONNECTION,
-                None, None)
-            self.conn.signal_subscribe(None, NOTIFICATIONS[0], None, NOTIFICATIONS[1], None, Gio.DBusSignalFlags.NONE,
-                                       lambda _c, _s, _p, _i, name, args: on_signal(name, args.unpack()))
-        finally:
-            ctx.pop_thread_default()
-        self.loop = GLib.MainLoop.new(ctx, False)
-        threading.Thread(target=self.loop.run, daemon=True).start()
-
-    def call(self, method, args, reply):
-        return self.conn.call_sync(NOTIFICATIONS[0], NOTIFICATIONS[1], NOTIFICATIONS[0], method, args,
-                                   self.GLib.VariantType.new(reply), self.Gio.DBusCallFlags.NONE, int(config.NOTIFY_WAIT * 1000),
-                                   None).unpack()
-
-    def notify(self, app_icon, summary, body, actions, hints, replaces=0):
-        """The Notify call (its id): actions are [key, label, …], hints strings, replaces the id of the one shown in its
-        place (0: none)."""
-        V = self.GLib.Variant
-        return self.call("Notify", V("(susssasa{sv}i)", (config.APP, replaces, app_icon, summary, body, actions,
-                                                         {k: V("s", v) for k, v in hints.items()}, -1)), "(u)")[0]
-
-    def close(self, nid):
-        self.call("CloseNotification", self.GLib.Variant("(u)", (nid,)), "()")
-
-    def closed(self):
-        return self.conn.is_closed()
-
-    def drop(self):
-        self.loop.quit()
-        with contextlib.suppress(Exception):
-            self.conn.close_sync(None)
-
-
-class Notifications:
-    """Ferry's notifications over its own connection to the session bus (connect(address, on_signal): GioBus), made
-    on the first one and kept for the process's life, so that the connection that sent a notification hears its
-    buttons pressed: GNOME's daemon tells that connection alone, so neither gdbus nor another process could listen.
-    Made again when it fails, closes or the desktop's bus moves (a logout and login while the service runs)."""
-    KEEP = 50   # notifications whose buttons are remembered: a daemon that restarted never says the old ones closed
-
-    def __init__(self, connect=GioBus, env=None):
-        self.connect = connect
-        self.env = env or desktop_env
-        self.bus, self.address = None, ""
-        self.actions = {}                  # a notification's id: its {key: (label, function)}
-        self.lock = threading.Lock()       # the actions
-        self.busy = threading.Lock()       # the connection
-
-    def _connected(self, fresh=False):
-        address = session_bus(self.env())
-        if self.bus and (fresh or address != self.address or self.bus.closed()):
-            self.bus.drop()
-            self.bus = None
-        if self.bus is None and address and self.connect:
-            try:
-                self.bus, self.address = self.connect(address, self.signal), address
-            except ImportError:
-                self.connect = None   # no PyGObject: notify-send's for as long as this process runs
-            except Exception:   # GLib.Error: no bus there (any more), or it wouldn't have us
-                pass
-        return self.bus
-
-    def send(self, app_icon, summary, body, actions, hints, replaces=0):
-        """The notification's id, or None when it couldn't be sent this way."""
-        with self.busy:
-            for fresh in (False, True):   # once more on a new connection: the old one may be a bus that went away
-                bus = self._connected(fresh)
-                if bus is None:
-                    return None
-                try:
-                    nid = bus.notify(app_icon, summary, body, [s for k in actions for s in (k, actions[k][0])], hints,
-                                     replaces)
-                    break
-                except Exception:   # GLib.Error: the bus went, or no daemon answers on it
-                    continue
-            else:
-                return None
-        if actions:
-            with self.lock:
-                self.actions[nid] = dict(actions)
-                for old in list(self.actions)[:-self.KEEP]:
-                    del self.actions[old]
-        return str(nid)
-
-    def close(self, nid):
-        """False when it couldn't be closed this way (the notification wasn't sent this way)."""
-        with self.busy:
-            if self.bus is None:
-                return False
-            try:
-                self.bus.close(int(nid))
-                return True
-            except Exception:
-                return False
-
-    def signal(self, name, args):
-        if name == "ActionInvoked":
-            with self.lock:
-                action = self.actions.get(args[0], {}).get(args[1])
-            if action:   # in a thread: a function that waits (the clipboard's tool) would hold up the main loop
-                threading.Thread(target=action[1], daemon=True).start()
-        elif name == "NotificationClosed":
-            with self.lock:
-                self.actions.pop(args[0], None)
-
-
-notifications = Notifications()
-
-
-def notify(summary, body="", actions=(), preview="", replaces=""):
-    """A desktop notification (its id, or "" when none is shown); with actions, {key: (label, function)} are its
-    buttons, and the pressed one's function runs in a thread. A preview (an image's path) is the notification's
-    picture, as a screenshot's is. replaces is the id of one shown before, which this one takes the place of. No
-    "default" action: a click on the notification opens Ferry's window, which GNOME does by the desktop-entry hint when
-    there is none."""
-    # Over Ferry's own D-Bus connection rather than notify-send: on Ubuntu 26.04 AppArmor's profile for notify-send
-    # (/etc/apparmor.d/notify-send) lets it call only GetServerInformation and Notify, so libnotify, denied
-    # GetCapabilities, drops the buttons ("Actions are not supported…"), and it couldn't hear them pressed either.
-    # notify-send stays where there is no PyGObject or no session bus (a server, a desktop installed without the
-    # window), and where the daemon doesn't answer this way.
-    # The same as libnotify 0.8 sends: the picture as image-path (the image, else Ferry's icon), Ferry's icon as the
-    # app's with a preview, and the .desktop's name, from which GNOME draws Ferry's icon over it (else a generic one).
-    hints = {"desktop-entry": config.APP_ID}
-    if preview:
-        hints.update({"category": "transfer.complete", "image-path": file_uri(preview)})
-    else:
-        hints["image-path"] = config.ICON
-    nid = notifications.send(config.ICON if preview else "", summary, body, actions, hints, int(replaces or 0))
-    return nid if nid is not None else notify_send(summary, body, actions, preview, replaces)
-
-
-def notify_send(summary, body, actions, preview, replaces=""):
-    # -i is the notification's picture (libnotify 0.8): with a preview the picture is the image, and the icon goes as -n
-    # The .desktop's name, from which GNOME draws Ferry's icon over the notification (else a generic one)
-    cmd = ["notify-send", "-a", config.APP, "-p", "-h", f"string:desktop-entry:{config.APP_ID}"]
-    if preview:
-        cmd += ["-n", config.ICON, "-c", "transfer.complete", "-h", f"string:image-path:{file_uri(preview)}"]
-    else:
-        cmd += ["-i", config.ICON]
-    if replaces:
-        cmd += ["-r", str(replaces)]
-    for key in actions:
-        cmd += ["-A", f"{key}={actions[key][0]}"]
-    if actions:
-        cmd.append("--wait")
-    try:
-        p = subprocess.Popen(cmd + ["--", summary, body], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-                             env=desktop_env())
-    except OSError:
-        return ""
-    # The daemon's answer is the notification's id. Where there is no daemon (a server, a window manager without one),
-    # libnotify 0.8's notify-send with buttons prints nothing and waits for ever: one left behind for every send.
-    nid = p.stdout.readline().strip() if select.select([p.stdout], [], [], config.NOTIFY_WAIT)[0] else ""
-    if not nid:
-        p.kill()
-        p.wait()
-        p.stdout.close()
-        return ""
-
-    def wait():
-        out = p.communicate()[0].strip().splitlines()
-        if out and out[-1] in actions:
-            actions[out[-1]][1]()
-    threading.Thread(target=wait, daemon=True).start()
-    return nid
-
-
-def close_notification(nid):
-    if notifications.close(nid):   # by the connection that sent it: GNOME's daemon takes it from no other
-        return
-    try:
-        subprocess.run(["gdbus", "call", "--session", "--dest", "org.freedesktop.Notifications", "--object-path",
-                        "/org/freedesktop/Notifications", "--method",
-                        "org.freedesktop.Notifications.CloseNotification", nid], capture_output=True, timeout=5,
-                       env=desktop_env())
-    except (OSError, subprocess.SubprocessError):
-        pass
-
-
-def previewable(path, kind):
-    """The path when the notification can show the file as a picture: the formats every desktop draws (not HEIC),
-    else ""."""
-    return path if config.PREVIEW.match(kind or "") else ""
-
-
-def file_uri(path):
-    return "file://" + urllib.parse.quote(path)   # not pathname2url: Python 3.14's adds an authority to it
-
-
-def open_path(path):
-    try:
-        subprocess.Popen(["xdg-open", path], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=desktop_env())
-    except OSError:
-        pass
-
-
-def show_in_files_cmd(path):
-    return ["gdbus", "call", "--session", "--dest", "org.freedesktop.FileManager1", "--object-path",
-            "/org/freedesktop/FileManager1", "--method", "org.freedesktop.FileManager1.ShowItems",
-            f"['{file_uri(path)}']", ""]
-
-
-def show_in_files(path):
-    """The file's folder with the file selected, in any file manager that answers org.freedesktop.FileManager1 (GNOME's
-    Files, Dolphin, Nemo, Thunar); just the folder otherwise."""
-    try:
-        if subprocess.run(show_in_files_cmd(path), capture_output=True, timeout=10, env=desktop_env()).returncode == 0:
-            return
-    except (OSError, subprocess.SubprocessError):
-        pass
-    open_path(os.path.dirname(path))
-
-
-def hook(event):
-    """Tells a desktop's own Ferry menu (Nightdrive's top bar) that something changed: HOOK with the event's name."""
-    if not os.access(config.HOOK, os.X_OK):
-        return None
-    try:
-        return subprocess.Popen([config.HOOK, event], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=desktop_env())
-    except OSError:
-        return None
-
-
-def changed():
-    hook("changed")
-
-
-def idle_seconds(ms):
-    """api/items' idle from milliseconds since the last key press or mouse move: 0 within the last minute."""
-    return 0 if ms < config.IDLE_AFTER * 1000 else int(ms // 1000)
-
-
-class WaylandIdle:
-    """Idle time from a Wayland compositor that has ext-idle-notify-v1 (KDE, Hyprland, Sway and others): it says when the
-    user has been idle IDLE_AFTER seconds and when they're back. A small Wayland client of its own, since Python has
-    none built in and this needs only the registry, a seat and the notifier. GNOME's Mutter has no such protocol; its
-    D-Bus IdleMonitor answers instead (mutter_idle)."""
-    NOTIFIER, SEAT = "ext_idle_notifier_v1", "wl_seat"
-    REGISTRY, SYNC, SEAT_ID, NOTIFIER_ID, NOTIFICATION = 2, 3, 4, 5, 6   # the object ids this client makes
-
-    def __init__(self, connect=None, clock=time.time):
-        self.connect, self.clock = connect or self.open, clock
-        self.lock = threading.Lock()
-        self.since = None      # when the watch began (None: no watch)
-        self.idled = None      # when the user went idle (None: in use, as far as the watch knows)
-
-    def seconds(self):
-        """Seconds idle; None when no compositor answers, or for the first minute of a watch (it can't tell yet)."""
-        with self.lock:
-            since, idled = self.since, self.idled
-        if since is None:
-            return None
-        now = self.clock()
-        if idled is not None:
-            return max(config.IDLE_AFTER, int(now - idled))
-        return 0 if now - since >= config.IDLE_AFTER else None
-
-    @staticmethod
-    def open():
-        env = desktop_env()
-        name = env.get("WAYLAND_DISPLAY")
-        if not name:
-            return None
-        path = name if name.startswith("/") else os.path.join(env.get("XDG_RUNTIME_DIR") or f"/run/user/{os.getuid()}",
-                                                              name)
-        s = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
-        try:
-            s.settimeout(5)
-            s.connect(path)
-            s.settimeout(None)
-        except OSError:
-            s.close()
-            raise
-        return s
-
-    @staticmethod
-    def send(s, obj, op, args=b""):
-        s.sendall(struct.pack("=II", obj, (8 + len(args)) << 16 | op) + args)
-
-    @staticmethod
-    def string(text):
-        b = text.encode() + b"\0"
-        return struct.pack("=I", len(b)) + b + b"\0" * (-len(b) % 4)
-
-    @staticmethod
-    def receive(f):
-        head = f.read(8)
-        if len(head) < 8:
-            raise EOFError
-        obj, size_op = struct.unpack("=II", head)
-        args = f.read((size_op >> 16) - 8)
-        return obj, size_op & 0xFFFF, args
-
-    def watch(self):
-        """One connection, until the session ends: False when there is no compositor or it has no notifier."""
-        s = self.connect()
-        if not s:
-            return False
-        with s, s.makefile("rb") as f:
-            self.send(s, 1, 1, struct.pack("=I", self.REGISTRY))     # wl_display.get_registry
-            self.send(s, 1, 0, struct.pack("=I", self.SYNC))         # wl_display.sync: done after every global
-            found = {}
-            while True:
-                obj, op, args = self.receive(f)
-                if (obj, op) == (self.REGISTRY, 0):                  # wl_registry.global: name, interface, version
-                    name, n = struct.unpack_from("=II", args)
-                    iface = args[8:8 + n - 1].decode(errors="replace")
-                    found[iface] = (name, struct.unpack_from("=I", args, 8 + n + (-n % 4))[0])
-                elif (obj, op) == (self.SYNC, 0):
-                    break
-                elif (obj, op) == (1, 0):                            # wl_display.error
-                    return False
-            if self.NOTIFIER not in found or self.SEAT not in found:
-                return False
-            version = min(found[self.NOTIFIER][1], 2)
-            self.send(s, self.REGISTRY, 0, struct.pack("=I", found[self.SEAT][0]) + self.string(self.SEAT) +
-                      struct.pack("=II", 1, self.SEAT_ID))
-            self.send(s, self.REGISTRY, 0, struct.pack("=I", found[self.NOTIFIER][0]) + self.string(self.NOTIFIER) +
-                      struct.pack("=II", version, self.NOTIFIER_ID))
-            with self.lock:   # before the request, so a compositor that has it has a watch that began
-                self.since, self.idled = self.clock(), None
-            # v2's get_input_idle_notification counts only input: a video that keeps the screen on isn't someone there
-            self.send(s, self.NOTIFIER_ID, 2 if version >= 2 else 1,
-                      struct.pack("=III", self.NOTIFICATION, config.IDLE_AFTER * 1000, self.SEAT_ID))
-            try:
-                while True:
-                    obj, op, _ = self.receive(f)
-                    if obj == self.NOTIFICATION:
-                        with self.lock:
-                            self.idled = self.clock() - config.IDLE_AFTER if op == 0 else None   # 0: idled, 1: resumed
-                    elif (obj, op) == (1, 0):
-                        break
-            except (EOFError, OSError, struct.error):
-                pass
-            finally:
-                with self.lock:
-                    self.since = self.idled = None
-        return True
-
-    def run(self):
-        """Watches for as long as the server runs, through sessions that end and begin."""
-        while True:
-            try:
-                watched = self.watch()
-            except (EOFError, OSError, ValueError, struct.error):
-                watched = False
-            time.sleep(5 if watched else 30)
-
-
-WAYLAND_IDLE = WaylandIdle()
-
-
-def mutter_ms(out):
-    m = re.search(r"uint64 (\d+)", out or "")
-    return int(m.group(1)) if m else None
-
-
-def mutter_idle(env):
-    """GNOME's (Wayland and X11): Mutter's IdleMonitor on D-Bus."""
-    if env.get("XDG_CURRENT_DESKTOP") and "GNOME" not in env["XDG_CURRENT_DESKTOP"]:
-        return None
-    try:
-        out = subprocess.run(["gdbus", "call", "--session", "--dest", "org.gnome.Mutter.IdleMonitor", "--object-path",
-                              "/org/gnome/Mutter/IdleMonitor/Core", "--method",
-                              "org.gnome.Mutter.IdleMonitor.GetIdletime"], capture_output=True, text=True, timeout=3,
-                             env=env).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    ms = mutter_ms(out)
-    return None if ms is None else idle_seconds(ms)
-
-
-def x11_idle(env):
-    """An X11 desktop's (KDE's and others' on X11): the X server's screensaver extension. Not on a Wayland desktop,
-    where XWayland sees only its own windows' input."""
-    if not env.get("DISPLAY") or env.get("WAYLAND_DISPLAY"):
-        return None
-    try:
-        out = subprocess.run(["xprintidle"], capture_output=True, text=True, timeout=3, env=env).stdout.strip()
-    except (OSError, subprocess.SubprocessError):
-        return None
-    return idle_seconds(int(out)) if out.isdigit() else None
-
-
-def logind_idle(env):
-    """logind's idle hint, for a desktop that sets it (Nightdrive's hypridle sets it a minute after the last input;
-    others later, which makes the answer smaller than it is)."""
-    try:
-        sid = subprocess.run(["loginctl", "show-user", str(os.getuid()), "-p", "Display", "--value"],
-                             capture_output=True, text=True, timeout=3).stdout.strip()
-        if not sid:
-            return None
-        out = subprocess.run(["loginctl", "show-session", sid, "-p", "IdleHint", "-p", "IdleSinceHint"],
-                             capture_output=True, text=True, timeout=3).stdout
-    except (OSError, subprocess.SubprocessError):
-        return None
-    v = dict(line.split("=", 1) for line in out.splitlines() if "=" in line)
-    since = int(v.get("IdleSinceHint") or 0) / 1e6
-    if not since:   # never set: a desktop that doesn't tell logind (always "no" there would always win)
-        return None
-    if v.get("IdleHint") != "yes":
-        return 0
-    return max(0, int(time.time() - since + config.IDLE_AFTER))
-
-
-def idle_for(env=None, sources=None):
-    """Seconds since this computer was last used (0: in use), from the first source that knows; None when none does.
-    The phone sends to the computer in use."""
-    sources = sources or (lambda e: WAYLAND_IDLE.seconds(), mutter_idle, x11_idle, logind_idle)
-    env = desktop_env() if env is None else env
-    for source in sources:
-        s = source(env)
-        if s is not None:
-            return s
-    return None
+from ferry import config, desktop, idle, notices  # noqa: E402
 
 
 def tailscale_status():
@@ -924,7 +368,7 @@ def copied(item):
     then (docs/protocol.md › Codes and passwords)."""
     if secret(item):
         remove(item["id"])
-        changed()
+        desktop.changed()
 
 
 # python3-cryptography does the elliptic curves and AES-GCM; the rest (aes128gcm framing, VAPID's JWT) is small enough to
@@ -1133,7 +577,7 @@ def decide(device, forget, now=time.time):
         return True
     gone = forgotten_ids(forgotten(change))
     drop_subscriptions(gone)
-    changed()
+    desktop.changed()
 
 
 def bring_back(device):
@@ -1156,7 +600,7 @@ def learn_forgotten(theirs):
     gone = forgotten_ids(forgotten(change))
     if news:
         drop_subscriptions(gone)
-        changed()
+        desktop.changed()
     return bool(news)
 
 
@@ -1412,28 +856,28 @@ class Ferry:
         # one leaves the box once copied, so one on the clipboard isn't kept (docs/protocol.md › Codes and passwords).
         it = new_item(to="computer", kind="text", text=text, seen=False, **{"from": who})
         hidden = looks_secret(text)
-        on_clipboard = clip and copy_text(text, sensitive=True)
+        on_clipboard = clip and desktop.copy_text(text, sensitive=True)
         if not (on_clipboard and hidden):
             with box(write=True) as items:
                 items.append(it)
         if on_clipboard:
-            later(notify, f"Copied from {who}", config.SECRET_NAMED if hidden else text[:300])
+            later(notices.notify, f"Copied from {who}", config.SECRET_NAMED if hidden else text[:300])
         else:
-            later(notify, f"Text from {who}", config.SECRET_HIDDEN if hidden else text[:300],
-                  {"copy": ("Copy", lambda: copy_text(text, sensitive=hidden) and copied(it))})
-        changed()
+            later(notices.notify, f"Text from {who}", config.SECRET_HIDDEN if hidden else text[:300],
+                  {"copy": ("Copy", lambda: desktop.copy_text(text, sensitive=hidden) and copied(it))})
+        desktop.changed()
 
     def received_file(self, path, size, kind, who, clip=False):
         with box(write=True) as items:
             items.append(new_item(to="computer", kind="file", name=os.path.basename(path), size=size, type=kind,
                                   path=path, seen=False, **{"from": who}))
-        changed()
+        desktop.changed()
         # An image from the phone's clipboard goes onto this one's too, ready to paste; the file stays in Downloads
-        if clip and kind.startswith("image/") and copy_file(path, kind, sensitive=True):
-            return later(notify, f"Copied {os.path.basename(path)}",
+        if clip and kind.startswith("image/") and desktop.copy_file(path, kind, sensitive=True):
+            return later(notices.notify, f"Copied {os.path.basename(path)}",
                          f"From {who} · {os.path.basename(os.path.dirname(path))}", {
-                             "open": ("Open", lambda: open_path(path)),
-                             "show": ("Show in Files", lambda: show_in_files(path))}, previewable(path, kind))
+                             "open": ("Open", lambda: desktop.open_path(path)),
+                             "show": ("Show in Files", lambda: desktop.show_in_files(path))}, desktop.previewable(path, kind))
         with self.lock:
             when, group = self.recent
             if group is None or time.monotonic() - when >= config.GROUP_NOTIFY:
@@ -1453,17 +897,17 @@ class Ferry:
                 return
             nid = self.files_notification(paths, kind, who, old)
             if old and nid and nid != old:   # a daemon that showed a new one rather than replace it
-                close_notification(old)
+                notices.close_notification(old)
             with self.lock:
                 group["nid"], group["shown"] = nid or old, len(paths)
 
     def files_notification(self, paths, kind, who, replaces):
         title = f"Received {os.path.basename(paths[-1])}" if len(paths) == 1 else f"Received {len(paths)} files"
         first = paths[0]
-        return notify(title, f"From {who} · {os.path.basename(os.path.dirname(paths[-1]))}", {
-            "open": ("Open", lambda: open_path(first if len(paths) == 1 else os.path.dirname(first))),
-            "show": ("Show in Files", lambda: show_in_files(first))},
-            previewable(first, kind) if len(paths) == 1 else "", replaces)
+        return notices.notify(title, f"From {who} · {os.path.basename(os.path.dirname(paths[-1]))}", {
+            "open": ("Open", lambda: desktop.open_path(first if len(paths) == 1 else os.path.dirname(first))),
+            "show": ("Show in Files", lambda: desktop.show_in_files(first))},
+            desktop.previewable(first, kind) if len(paths) == 1 else "", replaces)
 
 
 def later(fn, *args):
@@ -1619,7 +1063,7 @@ def handler(app):
                 who = self.who()
                 with box() as items:
                     out = [public(i) for i in items if for_device(i, who)]
-                self.send(200, {"computer": config.alias(), "items": out, "keep": config.KEEP_DAYS, "idle": idle_for(),
+                self.send(200, {"computer": config.alias(), "items": out, "keep": config.KEEP_DAYS, "idle": idle.idle_for(),
                                 "push": b64u(point(app.key)) if app.key else None})
             elif path.startswith("/font/") and path[6:] in config.FONT_FILES:
                 try:
@@ -1628,7 +1072,7 @@ def handler(app):
                 except OSError:
                     self.send(404, "Not found")   # the page falls back to the system font
             elif path == "/api/ping":
-                self.send(200, {"computer": config.alias(), "idle": idle_for(), "forgotten": forgotten()})
+                self.send(200, {"computer": config.alias(), "idle": idle.idle_for(), "forgotten": forgotten()})
             elif path == "/api/machines":
                 self.send(200, {"machines": app.machines(), "push": b64u(point(app.key)) if app.key else None,
                                 "forgotten": forgotten()})
@@ -1689,11 +1133,11 @@ def handler(app):
                         for it in [i for i in items if i.get("to") == to]:
                             drop_file(it)
                             items.remove(it)
-                    changed()
+                    desktop.changed()
                     self.send(200, {"ok": True})
                 elif path == "/api/remove":
                     remove(q.get("id", ""))
-                    changed()
+                    desktop.changed()
                     self.send(200, {"ok": True})
                 elif path == "/api/subscribe":
                     entry = subscription(json.loads(self.read_body(8192) or b"{}"), self.who())
@@ -1859,7 +1303,7 @@ def run():
     server = Server(("127.0.0.1", config.PORT), handler(app))
     threading.Thread(target=tidy, daemon=True).start()
     threading.Thread(target=look_around, args=(app,), daemon=True).start()
-    threading.Thread(target=WAYLAND_IDLE.run, daemon=True).start()
+    threading.Thread(target=idle.WAYLAND_IDLE.run, daemon=True).start()
     threading.Thread(target=keep_warm, daemon=True).start()
     print(f"Ferry on 127.0.0.1:{config.PORT}{'' if app.key else ' (no Web Push: python3-cryptography is missing)'}",
           flush=True)
@@ -2214,7 +1658,7 @@ def mark_sent(what, to, error=""):
         json.dump(dict({"time": time.time(), "what": what, "to": to}, **({"error": error} if error else {})), f,
                   ensure_ascii=False)
     os.replace(tmp, os.path.join(config.STATE, "sent.json"))
-    changed()
+    desktop.changed()
 
 
 def last_sent():
@@ -2370,7 +1814,7 @@ def print_list():
         print(head + fit(what, room) + who)
     if any(i.get("to") == "computer" and not i.get("seen") for i in items):
         mark_seen()
-        changed()
+        desktop.changed()
 
 
 def get(it):
@@ -2388,7 +1832,7 @@ def get(it):
         print(os.path.relpath(dest))
     if it.get("to") == "computer" and not it.get("seen"):
         mark_seen({it["id"]})
-        changed()
+        desktop.changed()
     copied(it)   # a code or a password printed is picked up (docs/protocol.md › Codes and passwords)
     return 0
 
@@ -2397,7 +1841,7 @@ def send(args, dev):
     """Files when every argument is one, a text otherwise; with no arguments, what is piped in or the clipboard."""
     if args in ([], ["-"]):
         piped = args == ["-"] or not sys.stdin.isatty()
-        text = sys.stdin.read() if piped else paste_text()
+        text = sys.stdin.read() if piped else desktop.paste_text()
         if not text.strip():
             print("Nothing to send: " + ("the input is empty" if piped else "the clipboard has no text"), file=sys.stderr)
             return 1
@@ -2443,7 +1887,7 @@ def pick_device(args):
 
 def failed(err):
     """A send from the menu or a drop that didn't go: nobody sees stderr there."""
-    notify("Couldn't send", err)
+    notices.notify("Couldn't send", err)
     mark_sent("", "", err)
     print(err, file=sys.stderr)
     return 1
@@ -2456,7 +1900,7 @@ def pick_files(title):
     for cmd in (["zenity", "--file-selection", "--multiple", "--separator=\n", f"--title={title}", f"--filename={home}"],
                 ["kdialog", "--title", title, "--getopenfilename", home, "--multiple", "--separate-output"]):
         if shutil.which(cmd[0]):
-            res = subprocess.run(cmd, capture_output=True, text=True, env=desktop_env())
+            res = subprocess.run(cmd, capture_output=True, text=True, env=desktop.desktop_env())
             return [p for p in res.stdout.splitlines() if p]
     return None
 
@@ -2613,16 +2057,16 @@ def main():
                 return 1
             err = deliver(dev, files=paths)
             # A menu that closed for the dialog may open again to show what was just sent
-            hook("picked")
+            desktop.hook("picked")
             return failed(err) if err else 0
         if cmd == "text":
             if not " ".join(rest).strip():
                 return 1
             err = deliver(dev, text=" ".join(rest))
             return failed(err) if err else 0
-        text = paste_text()
+        text = desktop.paste_text()
         if not text.strip():
-            notify("The clipboard has no text", "Copy a text or a link first")
+            notices.notify("The clipboard has no text", "Copy a text or a link first")
             mark_sent("", "", "The clipboard has no text")
             return 1
         err = deliver(dev, text=text, clip=True)
@@ -2670,18 +2114,18 @@ def main():
             if cmd in ("rm", "remove"):
                 remove(it["id"])
             elif cmd == "copy" and it.get("kind") == "text":
-                if not copy_text(it["text"], sensitive=secret(it)):
+                if not desktop.copy_text(it["text"], sensitive=secret(it)):
                     print("No clipboard to copy to: this needs a desktop", file=sys.stderr)
                     return 1
                 copied(it)
             elif cmd == "open" and it.get("kind") == "file":
-                open_path(it["path"])
+                desktop.open_path(it["path"])
             else:
                 print(f"{'Copy' if cmd == 'copy' else 'Open'} is for a {'text' if cmd == 'copy' else 'file'}: "
                       f"ferry get {a[1 + found.index(it)]}", file=sys.stderr)
                 return 1
         if cmd in ("rm", "remove"):
-            changed()
+            desktop.changed()
     elif cmd == "clear" and len(a) <= 2:
         to = {"": None, "received": "computer", "sent": "phone"}.get(a[1] if len(a) > 1 else "", "?")
         if to == "?":
@@ -2691,7 +2135,7 @@ def main():
             for it in [i for i in items if to is None or i.get("to") == to]:
                 drop_file(it)
                 items.remove(it)
-        changed()
+        desktop.changed()
     elif cmd == "seen":
         mark_seen()
     elif cmd == "qr":

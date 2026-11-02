@@ -9,7 +9,7 @@ import subprocess
 import tempfile
 import unittest
 
-from load import bin_ferry, config
+from load import config, desktop
 
 
 class DesktopEnv(unittest.TestCase):
@@ -34,7 +34,7 @@ class DesktopEnv(unittest.TestCase):
             if manager is None:
                 raise AssertionError("the service manager wasn't to be asked")
             return manager
-        return bin_ferry.desktop_env(dict(base, XDG_RUNTIME_DIR=self.runtime), manager=ask, x11=self.x11)
+        return desktop.desktop_env(dict(base, XDG_RUNTIME_DIR=self.runtime), manager=ask, x11=self.x11)
 
     def test_a_command_run_on_the_desktop_keeps_its_own(self):
         env = self.env({"WAYLAND_DISPLAY": "wayland-0", "XDG_CURRENT_DESKTOP": "Hyprland"})
@@ -89,41 +89,41 @@ X11 = {"DISPLAY": ":0"}
 class Clipboard(unittest.TestCase):
     def test_wayland_first(self):
         run = Run()
-        self.assertTrue(bin_ferry.copy_text("801566", env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
+        self.assertTrue(desktop.copy_text("801566", env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
         self.assertEqual([c[0][0] for c in run.calls], ["wl-copy"])
 
     def test_the_text_goes_in_on_stdin(self):   # a 1 MiB text is too long for one argument
         run = Run()
-        bin_ferry.copy_text("x" * 300000, env=WAYLAND, run=run, have=have("wl-copy"))
+        desktop.copy_text("x" * 300000, env=WAYLAND, run=run, have=have("wl-copy"))
         cmd, data, _ = run.calls[0]
         self.assertEqual(data, b"x" * 300000)
         self.assertTrue(all(len(a) < 100 for a in cmd))
 
     def test_x11s_clipboard_when_wayland_cant(self):   # GNOME has no data-control protocol; XWayland shares the clipboard
         run = Run(fail={"wl-copy"})
-        self.assertTrue(bin_ferry.copy_text("801566", env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
+        self.assertTrue(desktop.copy_text("801566", env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
         self.assertEqual([c[0][0] for c in run.calls], ["wl-copy", "xclip"])
 
     def test_x11(self):
         run = Run()
-        self.assertTrue(bin_ferry.copy_text("801566", env=X11, run=run, have=have("wl-copy", "xclip")))
+        self.assertTrue(desktop.copy_text("801566", env=X11, run=run, have=have("wl-copy", "xclip")))
         self.assertEqual(run.calls[0][0][:3], ["xclip", "-selection", "clipboard"])
 
     def test_the_desktops_variables_reach_the_tool(self):
         run = Run()
-        bin_ferry.copy_text("801566", env=WAYLAND, run=run, have=have("wl-copy"))
+        desktop.copy_text("801566", env=WAYLAND, run=run, have=have("wl-copy"))
         self.assertEqual(run.calls[0][2]["WAYLAND_DISPLAY"], "wayland-0")
 
     def test_no_clipboard(self):
-        self.assertFalse(bin_ferry.copy_text("801566", env={}, run=Run(), have=have("wl-copy", "xclip")))
-        self.assertFalse(bin_ferry.copy_text("801566", env=WAYLAND, run=Run(), have=have()))
+        self.assertFalse(desktop.copy_text("801566", env={}, run=Run(), have=have("wl-copy", "xclip")))
+        self.assertFalse(desktop.copy_text("801566", env=WAYLAND, run=Run(), have=have()))
 
     def test_sensitive(self):   # Send Clipboard's text, a code: cliphist and Klipper keep no copy (wl-clipboard 2.3)
         run = Run()
-        self.assertTrue(bin_ferry.copy_text("801566", sensitive=True, env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
+        self.assertTrue(desktop.copy_text("801566", sensitive=True, env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
         self.assertEqual([c[0][:2] for c in run.calls], [["wl-copy", "--sensitive"]])
         run = Run()
-        bin_ferry.copy_text("Milk, coffee", env=WAYLAND, run=run, have=have("wl-copy"))
+        desktop.copy_text("Milk, coffee", env=WAYLAND, run=run, have=have("wl-copy"))
         self.assertNotIn("--sensitive", run.calls[0][0])
 
     def test_a_wl_copy_without_sensitive_still_copies(self):   # before 2.3 it refuses the option
@@ -132,13 +132,13 @@ class Clipboard(unittest.TestCase):
                 r = super().__call__(cmd, input, **kw)
                 return subprocess.CompletedProcess(cmd, 1 if "--sensitive" in cmd else r.returncode)
         run = Old()
-        self.assertTrue(bin_ferry.copy_text("801566", sensitive=True, env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
+        self.assertTrue(desktop.copy_text("801566", sensitive=True, env=WAYLAND, run=run, have=have("wl-copy", "xclip")))
         self.assertEqual([c[0][:2] for c in run.calls], [["wl-copy", "--sensitive"], ["wl-copy", "--type"]])
 
     def test_a_sensitive_image(self):
         with tempfile.NamedTemporaryFile(suffix=".png") as f:
             run = Run()
-            self.assertTrue(bin_ferry.copy_file(f.name, "image/png", sensitive=True, env=WAYLAND, run=run, have=have("wl-copy")))
+            self.assertTrue(desktop.copy_file(f.name, "image/png", sensitive=True, env=WAYLAND, run=run, have=have("wl-copy")))
             self.assertEqual(run.calls[0][0], ["wl-copy", "--sensitive", "--type", "image/png"])
 
     def test_an_image_with_its_type(self):
@@ -147,32 +147,32 @@ class Clipboard(unittest.TestCase):
             f.flush()
             for env, tool in ((WAYLAND, "wl-copy"), (X11, "xclip")):
                 run = Run()
-                self.assertTrue(bin_ferry.copy_file(f.name, "image/png", env=env, run=run, have=have("wl-copy", "xclip")))
+                self.assertTrue(desktop.copy_file(f.name, "image/png", env=env, run=run, have=have("wl-copy", "xclip")))
                 cmd, data, _ = run.calls[0]
                 self.assertEqual((cmd[0], data), (tool, b"\x89PNG"))
                 self.assertIn("image/png", cmd)
 
     def test_paste(self):
         run = Run(out="Grüße".encode())
-        self.assertEqual(bin_ferry.paste_text(env=WAYLAND, run=run, have=have("wl-paste", "wl-copy", "xclip")), "Grüße")
+        self.assertEqual(desktop.paste_text(env=WAYLAND, run=run, have=have("wl-paste", "wl-copy", "xclip")), "Grüße")
         self.assertEqual(run.calls[0][0][0], "wl-paste")
 
     def test_paste_from_x11_when_wayland_has_no_text(self):
         run = Run(fail={"wl-paste"}, out=b"code")
-        self.assertEqual(bin_ferry.paste_text(env=WAYLAND, run=run, have=have("wl-paste", "wl-copy", "xclip")), "code")
+        self.assertEqual(desktop.paste_text(env=WAYLAND, run=run, have=have("wl-paste", "wl-copy", "xclip")), "code")
         self.assertEqual([c[0][0] for c in run.calls], ["wl-paste", "xclip"])
 
     def test_an_image_is_no_text(self):   # xclip, asked for the text of an image another xclip serves, gives its bytes
         run = Run(out=b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR")
-        self.assertEqual(bin_ferry.paste_text(env=X11, run=run, have=have("xclip")), "")
+        self.assertEqual(desktop.paste_text(env=X11, run=run, have=have("xclip")), "")
 
     def test_nothing_to_paste(self):
-        self.assertEqual(bin_ferry.paste_text(env=X11, run=Run(fail={"xclip"}), have=have("xclip")), "")
+        self.assertEqual(desktop.paste_text(env=X11, run=Run(fail={"xclip"}), have=have("xclip")), "")
 
 
 class ShowInFiles(unittest.TestCase):
     def test_asks_the_file_manager_to_select_it(self):   # Files, Dolphin, Nemo, Thunar: org.freedesktop.FileManager1
-        cmd = bin_ferry.show_in_files_cmd("/home/u/Downloads/it's a photo.jpg")
+        cmd = desktop.show_in_files_cmd("/home/u/Downloads/it's a photo.jpg")
         self.assertIn("org.freedesktop.FileManager1.ShowItems", cmd)
         self.assertIn("['file:///home/u/Downloads/it%27s%20a%20photo.jpg']", cmd)
 
@@ -193,12 +193,12 @@ class Hook(unittest.TestCase):
         with open(config.HOOK, "w") as f:
             f.write(f"#!/bin/sh\necho \"$1\" > '{out}'\n")
         os.chmod(config.HOOK, stat.S_IRWXU)
-        bin_ferry.hook("changed").wait(5)
+        desktop.hook("changed").wait(5)
         with open(out) as f:
             self.assertEqual(f.read(), "changed\n")
 
     def test_none(self):
-        self.assertIsNone(bin_ferry.hook("changed"))
+        self.assertIsNone(desktop.hook("changed"))
 
 
 if __name__ == "__main__":
