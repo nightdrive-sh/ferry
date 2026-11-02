@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 
-from load import bin_ferry, computers, config, owner
+from load import computers, config, install, owner
 
 
 class Launcher(unittest.TestCase):
@@ -21,13 +21,13 @@ class Launcher(unittest.TestCase):
         self.data_home = config.data_home
         config.data_home = lambda: os.path.join(t, "share")
         self.ran = []
-        self.run = bin_ferry.quietly
-        bin_ferry.quietly = lambda *cmd: self.ran.append(cmd)
+        self.run = install.quietly
+        install.quietly = lambda *cmd: self.ran.append(cmd)
 
     def tearDown(self):
         for k, v in self.saved.items():
             setattr(owner(k), k, v)
-        bin_ferry.quietly = self.run
+        install.quietly = self.run
         config.data_home = self.data_home
         self.tmp.cleanup()
 
@@ -42,7 +42,7 @@ class Launcher(unittest.TestCase):
         return os.path.join(config.AUTOSTART, config.APP_ID + ".desktop")
 
     def test_the_app_entry_runs_this_ferry_and_takes_any_file(self):
-        bin_ferry.install_launcher()
+        install.install_launcher()
         e = self.entry()
         exe = os.path.join(config.ROOT, "bin", "ferry")
         self.assertIn(f"Exec={exe} app %F\n", e)
@@ -54,8 +54,8 @@ class Launcher(unittest.TestCase):
         self.assertIn(("update-desktop-database", config.APPLICATIONS), self.ran)
 
     def test_send_with_ferry_in_the_file_managers_menus(self):
-        bin_ferry.install_launcher()
-        menus = bin_ferry.file_manager_menus()
+        install.install_launcher()
+        menus = install.file_manager_menus()
         self.assertEqual(len(menus), 3)
         for path, (text, executable) in menus.items():
             self.assertIn(" app ", self.read(path))
@@ -63,24 +63,24 @@ class Launcher(unittest.TestCase):
 
     def test_a_path_with_a_space_is_quoted(self):
         config.ROOT = "/home/a b/ferry"
-        self.assertIn('Exec="/home/a b/ferry/bin/ferry" app %F', bin_ferry.desktop_entry())
+        self.assertIn('Exec="/home/a b/ferry/bin/ferry" app %F', install.desktop_entry())
 
     def test_the_tray_starts_at_login(self):
-        bin_ferry.install_launcher()
+        install.install_launcher()
         e = self.read(self.autostart())
         self.assertIn(" app --background\n", e)
         self.assertIn("NoDisplay=true", e)
 
     def test_tray_off_holds_across_installs(self):
-        bin_ferry.install_launcher()
-        bin_ferry.set_tray(False)
+        install.install_launcher()
+        install.set_tray(False)
         self.assertFalse(os.path.exists(self.autostart()))
-        bin_ferry.install_launcher()   # an update
+        install.install_launcher()   # an update
         self.assertFalse(os.path.exists(self.autostart()))
-        self.assertFalse(bin_ferry.tray_wanted())
-        bin_ferry.set_tray(True)
+        self.assertFalse(install.tray_wanted())
+        install.set_tray(True)
         self.assertTrue(os.path.exists(self.autostart()))
-        self.assertTrue(bin_ferry.tray_wanted())
+        self.assertTrue(install.tray_wanted())
 
 
 class ClipboardImage(unittest.TestCase):

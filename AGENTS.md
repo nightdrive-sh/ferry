@@ -1,8 +1,8 @@
 # Agent notes
 
 Ferry is a mailbox between your devices over Tailscale. This repo holds its apps, its protocol (README) and both of its
-servers: the Linux one (`linux/bin/ferry`), which came from Nightdrive's Ferry plugin, and the Mac app's
-(`FerryKit/Sources/FerryServer`), written against `docs/protocol.md`. Nightdrive (`nightdrive-sh/nightdrive`, its own
+servers: the Linux one (`linux/ferry/`, run by `linux/bin/ferry`), which came from Nightdrive's Ferry plugin, and the
+Mac app's (`FerryKit/Sources/FerryServer`), written against `docs/protocol.md`. Nightdrive (`nightdrive-sh/nightdrive`, its own
 repo and AGENTS.md) keeps its top bar menu for Ferry; its plugin still has its own copy of the server until it
 installs Ferry from here.
 
@@ -24,15 +24,18 @@ installs Ferry from here.
   (`Theme`, colour sets, fonts) and the share view, so the UI tests can show that view in the app. `ios/Ferry.xcodeproj` is hand-written with
   file-system-synchronized groups: a new file in `ios/Ferry/` needs no project edit, a new target does.
 - **Adding a phone:** Add Device's QR code (Mac, Linux) is a link to `https://nightdrive.sh/ferry/add` with the
-  computer's base URL in its fragment (`SetupAddress.link`, `add_link` in `linux/bin/ferry`). The iPhone app claims it
+  computer's base URL in its fragment (`SetupAddress.link`, `add_link` in `linux/ferry/cli.py`). The iPhone app claims it
   as a universal link (`applinks:nightdrive.sh`; the `apple-app-site-association` is the website repo's,
   `nightdrive-sh/nightdrive-website`) and handles it in `FerryApp.opened`. The UI tests hand it to the app with
   `XCUIApplication.open`. iOS reads that file through Apple's CDN, which may answer 404 for a while after a change and
   then iOS opens the link in Safari: to try `simctl openurl` with the real link at once, build for the simulator with
   `CODE_SIGN_ENTITLEMENTS` pointing to a copy saying `applinks:nightdrive.sh?mode=developer` (read from the site itself).
-- `linux/`: the Linux server, also the `ferry` command: `bin/ferry` is one Python file with no dependency beyond
-  python3-cryptography (Web Push), and runs the desktop's tools (wl-clipboard, xclip, notify-send, xprintidle, gdbus,
-  xdg-open). Notifications go over its own session bus connection with PyGObject's Gio where it has it (`Notifications`;
+- `linux/`: the Linux server, also the `ferry` command: the Python package `ferry/` (a module per part: `config`,
+  `desktop`, `notices`, `idle`, `tailnet`, `store`, `push`, `forget`, `computers`, `server`, `api`, `updates`,
+  `install`, `terminal`, `cli`), which `bin/ferry` runs from beside it, with no dependency beyond python3-cryptography
+  (Web Push). A module reaches another's names through it (`config.STATE`, `notices.notify`), never `from … import`,
+  so a test patches a name in the module that defines it (`tests/load.py`'s `owner()`). It runs the desktop's tools
+  (wl-clipboard, xclip, notify-send, xprintidle, gdbus, xdg-open). Notifications go over its own session bus connection with PyGObject's Gio where it has it (`Notifications`;
   GNOME tells only the connection that sent a notification which button was pressed, and Ubuntu 26.04's AppArmor
   profile keeps notify-send from asking for buttons at all), else through notify-send. `web/` is the page it serves to phones without the app (a PWA; `web/fonts` links to `ios/Shared/Fonts`).
   `systemd/ferry.service` is the user service, started with the session rather than the desktop, so `desktop_env()`
@@ -43,8 +46,8 @@ installs Ferry from here.
   installs a release (or `--from linux`) into `~/.local/lib/ferry` and runs `ferry enable`. A desktop's own menu reads
   `ferry list --json` and hears of changes through `~/.config/ferry/hook`.
 - `linux/app/`: the Linux app, the Mac popover's content as a GTK 4 window (`ferry app`, PyGObject, no libadwaita), in
-  Ferry's own colours and JetBrains Mono. `ferry_app.py` gets `bin/ferry` as its `core` and only draws and runs things
-  off the main loop: what it shows and does (setup steps `setup_step()`, sending `deliver()`, updates
+  Ferry's own colours and JetBrains Mono. `ferry_app.py` imports the `ferry` package's modules and only draws and runs
+  things off the main loop: what it shows and does (setup steps `setup_step()`, sending `deliver()`, updates
   `check_update()`) is the server's, so `ferry list --json` says the same. `look.py` is what needs no GTK (the palette
   from `ios/Shared/Colors.xcassets`, the style sheet, Lucide icons, the words), tested on the Mac. The tray icon is a
   StatusNotifierItem with a dbusmenu, over Gio's D-Bus (GTK 4 has no tray), registered where a
@@ -62,7 +65,7 @@ installs Ferry from here.
   40 s after its first request, as a computer just set up does), because the simulator can't run
   Tailscale.
 - `docs/protocol.md` is the contract between the apps and the computers. A change to either server's API updates it in
-  the same piece of work, and the apps are built against it, not against `linux/bin/ferry`'s code.
+  the same piece of work, and the apps are built against it, not against `linux/ferry/`'s code.
 - **Designs and plans are not in this repo.** `docs/superpowers/` is a private git repo of its own inside the working
   tree (ignored here; meant for `nightdrive-sh/ferry-design` on GitHub): `specs/`, `plans/`, `design/`, `app-store/`,
   and `internal.md`, what this file leaves out because it isn't public (where the relay runs and how it is deployed,
@@ -133,7 +136,7 @@ installs Ferry from here.
 - Work happens in `dev`, and `main` is an earlier point of it (`git merge --ff-only dev` at a release). Check the branch
   before committing. The remote is `nightdrive-sh/ferry` on GitHub; pushing is the user's decision.
 - `linux/release.sh [--beta N]` makes a GitHub Release's Linux files in `linux/build/` (`ferry-linux.tar.gz`,
-  `install.sh`); the version is `VERSION` in `linux/bin/ferry`, with `-beta.N` added in the tarball for a pre-release.
+  `install.sh`); the version is `VERSION` in `linux/ferry/config.py`, with `-beta.N` added in the tarball for a pre-release.
 - Every platform has the same version (1.0.0), and a release is tagged `v<version>` or `v<version>-beta.N` with the
   Mac `.dmg` and the Linux files as its GitHub Release's assets.
 - `ios/build.sh` uploads to TestFlight and spends a build number (`tools/build-number.sh`: a base

@@ -9,7 +9,7 @@ import tempfile
 import time
 import unittest
 
-from load import bin_ferry, config, store
+from load import config, install, store
 
 
 class StateDir(unittest.TestCase):
@@ -67,7 +67,7 @@ class Migrate(unittest.TestCase):
 
     def migrate(self):
         # The old server is stopped first, while its state is still where it left it
-        return bin_ferry.migrate(self.old, self.new, stop=lambda: self.stopped.append(os.path.isdir(self.old)))
+        return install.migrate(self.old, self.new, stop=lambda: self.stopped.append(os.path.isdir(self.old)))
 
     def test_moves_everything(self):
         self.assertTrue(self.migrate())
@@ -103,7 +103,7 @@ class Migrate(unittest.TestCase):
 
     def test_nothing_to_move(self):
         empty = os.path.join(self.tmp.name, "none")
-        self.assertFalse(bin_ferry.migrate(empty, self.new, stop=lambda: self.stopped.append(True)))
+        self.assertFalse(install.migrate(empty, self.new, stop=lambda: self.stopped.append(True)))
         self.assertFalse(os.path.exists(self.new))
         self.assertEqual(self.stopped, [])
 

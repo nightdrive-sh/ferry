@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from load import bin_ferry, config, tailnet
+from load import cli, config, tailnet
 
 ADDRESS = "https://pc.tail0.ts.net/ferry/"
 LINK = "https://nightdrive.sh/ferry/add#https://pc.tail0.ts.net/ferry/"
@@ -18,10 +18,10 @@ LINK = "https://nightdrive.sh/ferry/add#https://pc.tail0.ts.net/ferry/"
 
 class AddLink(unittest.TestCase):
     def test_the_address_is_in_the_fragment(self):
-        self.assertEqual(bin_ferry.add_link(ADDRESS), LINK)
+        self.assertEqual(cli.add_link(ADDRESS), LINK)
 
     def test_no_address_no_link(self):
-        self.assertEqual(bin_ferry.add_link(""), "")
+        self.assertEqual(cli.add_link(""), "")
 
 
 class Qr(unittest.TestCase):
@@ -41,12 +41,12 @@ class Qr(unittest.TestCase):
 
     def test_terminal_code_holds_the_link(self):
         with mock.patch("sys.stdout"):
-            self.assertEqual(bin_ferry.qr(svg=False), 0)
+            self.assertEqual(cli.qr(svg=False), 0)
         self.assertEqual(self.runs[-1][-1], LINK)
 
     def test_menu_svg_holds_the_link(self):
         with mock.patch("sys.stdout"):
-            self.assertEqual(bin_ferry.qr(svg=True), 0)
+            self.assertEqual(cli.qr(svg=True), 0)
         self.assertEqual(self.runs[-1][-1], LINK)
 
 

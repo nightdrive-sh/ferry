@@ -81,7 +81,7 @@ Ferry is in beta, so every report helps: say which devices and systems you use.
 - **`FerryKit/`**: the Swift package with everything that isn't UI: the client, the machine list, the app's state. **`FerryKit/Sources/FerryServer/`** is a computer's side of the protocol in Swift, which the Mac app runs.
 - **`ios/`**: the iPhone app, its notification extension and its share extension.
 - **`macos/`**: the Mac app.
-- **`linux/`**: the Linux server and `ferry` command (`linux/bin/ferry`, one Python file), its window and tray icon (`linux/app/`, GTK 4), the page it serves to phones without the app (`linux/web/`), its systemd user service and its install script.
+- **`linux/`**: the Linux server and `ferry` command (`linux/bin/ferry` and its Python package `linux/ferry/`), its window and tray icon (`linux/app/`, GTK 4), the page it serves to phones without the app (`linux/web/`), its systemd user service and its install script.
 - **`relay/`**: the push relay at `push.nightdrive.sh` (PHP and SQLite), which holds Apple's push key and passes on the notifications it can't read (its README has the API).
 - **`tools/`**: fake computers for the simulator (`mock-ferry.py`), which can't run Tailscale, and the build number.
 

@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from load import api, bin_ferry, computers, config, desktop, forget, owner, push, server, tailnet
+from load import api, cli, computers, config, desktop, forget, install, owner, push, server, tailnet, updates
 from test_devices import STATUS
 
 
@@ -403,10 +403,10 @@ class ComingBack(App):   # docs/protocol.md › What forgetting does: a computer
 class Commands(App):   # Forget is final: nothing but adding a device again brings it back
     def run_ferry(self, *args):
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(sys, "argv", ["ferry", *args]), mock.patch.object(bin_ferry, "migrate", lambda: False), \
+        with mock.patch.object(sys, "argv", ["ferry", *args]), mock.patch.object(install, "migrate", lambda: False), \
                 mock.patch.object(tailnet, "tailscale_status", lambda: STATUS), \
                 mock.patch.object(sys, "stdout", out), mock.patch.object(sys, "stderr", err):
-            return bin_ferry.main(), out.getvalue(), err.getvalue()
+            return cli.main(), out.getvalue(), err.getvalue()
 
     def test_no_unforget_command(self):
         forget.decide("studio", True)
@@ -436,8 +436,8 @@ class Commands(App):   # Forget is final: nothing but adding a device again brin
         forget.decide("iphone", True)
         with mock.patch.object(tailnet, "tailscale_status", lambda: STATUS), \
                 mock.patch.object(tailnet, "systemctl", lambda *a: mock.Mock(returncode=0)), \
-                mock.patch.object(tailnet, "serving", lambda: True), mock.patch.object(bin_ferry, "available_update", lambda: None):
-            d = bin_ferry.listing()
+                mock.patch.object(tailnet, "serving", lambda: True), mock.patch.object(updates, "available_update", lambda: None):
+            d = cli.listing()
         self.assertEqual([x["id"] for x in d["devices"]], ["ipad"])
         self.assertNotIn("forgotten", d)
 

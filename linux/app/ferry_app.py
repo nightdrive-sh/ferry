@@ -1,8 +1,8 @@
 """Ferry's window and tray icon on Linux: the Mac app's popover as a GTK 4 window, in Ferry's own colours.
 
-`ferry app` runs it with bin/ferry as `core`: everything the window shows and does is core's (the box, the devices, the
-setup steps, sending, updates), so a desktop's own menu (`ferry list --json`) and the `ferry` command say and do the
-same. This file only draws it and runs it off the main loop.
+`ferry app` runs it: everything the window shows and does is the ferry package's (the box, the devices, the setup
+steps, sending, updates), so a desktop's own menu (`ferry list --json`) and the `ferry` command say and do the same.
+This file only draws it and runs it off the main loop.
 
 One instance per user (a GtkApplication): Open With, the app list and the tray all reach the running one. With a tray
 (a StatusNotifierWatcher on the session bus: KDE, Ubuntu's GNOME, Cinnamon, XFCE, Waybar) closing the window hides it;
@@ -27,9 +27,8 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import devices_page  # noqa: E402
 import look  # noqa: E402
-from ferry import computers, config, desktop, notices, store, tailnet  # noqa: E402
+from ferry import cli, computers, config, desktop, install, notices, store, tailnet, updates  # noqa: E402
 
-core = None              # bin/ferry, as a module (main())
 REFRESH = 5              # seconds between looks at the box and the devices while the window shows
 UPDATE_EVERY = 6 * 3600  # seconds between checks for a newer Ferry
 SETTLE = 2               # seconds "Sent to … ✓" shows
@@ -213,7 +212,7 @@ class Window(Gtk.ApplicationWindow):
         self.set_default_size(400, 620)
         self.set_resizable(HYPRLAND)
         self.set_icon_name(config.APP_ID)
-        self.data = None             # core.listing(), the last one
+        self.data = None             # cli.listing(), the last one
         self.refused = None          # tailscale serve's refusal: not asked again until Try Again
         self.acting = False          # a setup step's button is at work
         self.retrying = False        # publishing again quietly, after the operator right was missing
@@ -227,7 +226,7 @@ class Window(Gtk.ApplicationWindow):
         self.send_state = ("idle",)  # idle, sending, sent NAME, failed REASON, nothing
         self.last_send = None        # (what, device) for Try Again
         self.settling = 0
-        self.update = None           # a newer release, from core.check_update()
+        self.update = None           # a newer release, from updates.check_update()
         self.updating = False
         self.update_error = ""
         self.update_checked = 0
@@ -503,7 +502,7 @@ class Window(Gtk.ApplicationWindow):
                 self.publish_if_needed()
                 self.render()
                 self.mark_seen()
-        background(core.listing, done)
+        background(cli.listing, done)
 
     def publish_if_needed(self):
         """Not on the tailnet, and neither its user nor Tailscale said no: put it there, as `ferry enable` does. Refused
@@ -869,7 +868,7 @@ class Window(Gtk.ApplicationWindow):
                 pic.set_paintable(tex)
             else:
                 qr.set_visible(False)
-        background(lambda: qr_texture(core.add_link(address)), made)
+        background(lambda: qr_texture(cli.add_link(address)), made)
         row = Gtk.Box(spacing=8, halign=Gtk.Align.CENTER)
         addr = label(address, "mono", "dim", selectable=True)
         addr.set_ellipsize(Pango.EllipsizeMode.MIDDLE)
@@ -1026,7 +1025,7 @@ class Window(Gtk.ApplicationWindow):
             if action == "publish":
                 return ("publish", tailnet.publish())
             if action == "enable":
-                return ("enable", core.enable())
+                return ("enable", install.enable())
             if action == "tailscale-up":
                 r = subprocess.run(["tailscale", "up"], capture_output=True, text=True, timeout=60)
                 return ("up", (r.stdout + r.stderr).strip() if r.returncode else "")
@@ -1180,7 +1179,7 @@ class Window(Gtk.ApplicationWindow):
 
         def work():
             try:
-                return ("ok", core.check_update(max_age=None if force else UPDATE_EVERY))
+                return ("ok", updates.check_update(max_age=None if force else UPDATE_EVERY))
             except (OSError, ValueError) as e:
                 return ("error", str(e))
 
@@ -1602,7 +1601,7 @@ class App(Gtk.Application):
         self.window.show_page(page)
 
     def send_clipboard(self):
-        """From the tray's menu, without the window in front: the desktop's clipboard tools (core's), a text."""
+        """From the tray's menu, without the window in front: the desktop's clipboard tools (the package's), a text."""
         def work():
             text = desktop.paste_text()
             if not (text or "").strip():
@@ -1624,7 +1623,7 @@ class App(Gtk.Application):
         the icon is in a tray: give the panel a few seconds to appear at login."""
         if self.tray or self.trying_tray:
             return
-        if not core.tray_wanted():   # `ferry tray off`: e.g. Nightdrive, whose top bar has Ferry's menu
+        if not install.tray_wanted():   # `ferry tray off`: e.g. Nightdrive, whose top bar has Ferry's menu
             return
         self.hold()
         try:
@@ -1685,9 +1684,7 @@ class App(Gtk.Application):
         os.execv(sys.executable, [sys.executable, exe, "app"])
 
 
-def main(ferry, args):
-    global core
-    core = ferry
+def main(args):
     GLib.set_prgname(config.APP_ID)
     GLib.set_application_name("Ferry")
     if not Gtk.init_check() or Gdk.Display.get_default() is None:

@@ -1,6 +1,6 @@
 """The window's Devices page (More › Devices…): the owner's other devices, each forgotten on all of them with Forget
-(docs/protocol.md › Forgetting a device). Nothing here brings one back: adding it again does. It gets ferry_app as `ui`,
-as ferry_app gets bin/ferry as `core`: the helpers and the look are the window's, the forgetting is the server's."""
+(docs/protocol.md › Forgetting a device). Nothing here brings one back: adding it again does. It gets ferry_app as `ui`:
+the helpers and the look are the window's, the forgetting is the server's (ferry/forget.py)."""
 from gi.repository import Gtk
 
 import look
