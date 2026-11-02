@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from load import bin_ferry, computers, config, desktop, forget, owner, push, tailnet
+from load import api, bin_ferry, computers, config, desktop, forget, owner, push, server, tailnet
 from test_devices import STATUS
 
 
@@ -267,7 +267,7 @@ class App(unittest.TestCase):
             p = mock.patch.object(owner(name), name, value)
             p.start()
             self.addCleanup(p.stop)
-        self.app = bin_ferry.Ferry.__new__(bin_ferry.Ferry)
+        self.app = server.Ferry.__new__(server.Ferry)
         self.app.tailnet = Tailnet()
         self.app.key = None
         self.app.lock = threading.Lock()
@@ -290,7 +290,7 @@ class Api(App):
         out = mock.patch.object(sys, "stdout", io.StringIO())   # the journal's line for every request
         out.start()
         self.addCleanup(out.stop)
-        self.server = bin_ferry.Server(("127.0.0.1", 0), bin_ferry.handler(self.app))
+        self.server = server.Server(("127.0.0.1", 0), api.handler(self.app))
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)

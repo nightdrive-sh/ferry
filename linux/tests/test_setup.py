@@ -4,7 +4,7 @@
 """
 import unittest
 
-from load import bin_ferry, config, tailnet
+from load import config, server, tailnet
 
 RUNNING = {"BackendState": "Running", "CertDomains": ["pc.tail0.ts.net"],
            "Self": {"DNSName": "pc.tail0.ts.net.", "UserID": 1}}
@@ -127,7 +127,7 @@ class WarmCertificate(unittest.TestCase):
             asked.append(u)
             if fails:
                 raise OSError("timed out")
-        return bin_ferry.warm_certificate(own=lambda: url, served=lambda: served, get=get), asked
+        return server.warm_certificate(own=lambda: url, served=lambda: served, get=get), asked
 
     def test_asks_its_own_address(self):
         self.assertEqual(self.warm(), (self.URL, [self.URL + "api/ping"]))

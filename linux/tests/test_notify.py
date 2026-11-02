@@ -13,7 +13,7 @@ import time
 import unittest
 from unittest import mock
 
-from load import bin_ferry, config, desktop, notices, owner, store
+from load import config, desktop, notices, owner, server, store
 
 
 class NotifySend(unittest.TestCase):
@@ -151,7 +151,7 @@ class Bus(unittest.TestCase):
                                                    "image-path": "file:///home/j/Downloads/a%20b.jpg"})])
 
     def test_a_received_files_buttons(self):   # no "default" action: a click on it opens Ferry's window
-        app = bin_ferry.Ferry.__new__(bin_ferry.Ferry)
+        app = server.Ferry.__new__(server.Ferry)
         app.lock, app.notifying = threading.Lock(), threading.Lock()
         app.notify_files({"paths": ["/home/j/Downloads/a.pdf"], "nid": "", "shown": 0}, "application/pdf", "iphone")
         self.assertEqual(self.buses[0].sent[0][3], ["open", "Open", "show", "Show in Files"])
@@ -315,7 +315,7 @@ class Received(unittest.TestCase):
             p = mock.patch.object(owner(name), name, value)
             p.start()
             self.addCleanup(p.stop)
-        self.app = bin_ferry.Ferry.__new__(bin_ferry.Ferry)
+        self.app = server.Ferry.__new__(server.Ferry)
         self.app.lock = threading.Lock()
         self.app.notifying = threading.Lock()
         self.app.recent = (0.0, None)

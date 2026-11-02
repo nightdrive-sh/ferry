@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest import mock
 
-from load import bin_ferry, config, owner, push, store, tailnet, terminal
+from load import config, owner, push, server, store, tailnet, terminal
 
 # The vectors FerryKit's SecretTests runs too: one rule on every platform
 VECTORS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "FerryKit", "Tests", "FerryKitTests",
@@ -83,7 +83,7 @@ class ComputerNotification(unittest.TestCase):
             p = mock.patch.object(owner(name), name, value)
             p.start()
             self.addCleanup(p.stop)
-        self.app = bin_ferry.Ferry.__new__(bin_ferry.Ferry)
+        self.app = server.Ferry.__new__(server.Ferry)
 
     def received(self, text, clip=False):
         self.done.clear()
@@ -160,10 +160,10 @@ class Box(unittest.TestCase):
     def test_a_code_leaves_the_disk_too(self):   # read without a write, the box would keep it in items.json
         store.add_text("801566")
         self.now += 16 * 60
-        self.assertTrue(bin_ferry.tidy_once())
+        self.assertTrue(server.tidy_once())
         with open(os.path.join(config.STATE, "items.json")) as f:
             self.assertEqual(json.load(f)["items"], [])
-        self.assertFalse(bin_ferry.tidy_once())   # nothing to drop: not written
+        self.assertFalse(server.tidy_once())   # nothing to drop: not written
 
     def test_ferry_get_takes_a_code(self):   # a printed code was picked up
         store.add_text("801566")
