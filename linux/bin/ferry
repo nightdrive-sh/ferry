@@ -94,96 +94,11 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-PORT = 47270                 # the local server (127.0.0.1 only: tailscale serve is the way in)
-HTTPS_PORT = 443             # tailscale serve's port on the tailnet name
-MOUNT = "/ferry"             # the page's path there (tailscale serve strips it before the request reaches us)
-VERSION = "1.0.0"
+# The package beside bin/: ~/.local/bin/ferry is a link to bin/ferry, so the real path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
+from ferry import config  # noqa: E402
 
 
-def state_dir(env=os.environ, home=os.path.expanduser("~")):
-    return os.path.join(env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share"), "ferry")
-
-
-def config_dir(env=os.environ, home=os.path.expanduser("~")):
-    return os.path.join(env.get("XDG_CONFIG_HOME") or os.path.join(home, ".config"), "ferry")
-
-
-def data_home(env=os.environ, home=os.path.expanduser("~")):
-    return env.get("XDG_DATA_HOME") or os.path.join(home, ".local", "share")
-
-
-ROOT = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))   # bin/.. (~/.local/bin/ferry links to bin/ferry)
-STATE = state_dir()
-OLD_STATE = os.path.expanduser("~/.local/share/nightdrive/ferry")   # Nightdrive's Ferry plugin kept it here
-OLD_SERVICE = "nightdrive-ferry.service"                            # and ran this
-QR = os.path.join(os.environ.get("XDG_CACHE_HOME") or os.path.expanduser("~/.cache"), "ferry", "qr.svg")
-# Add Device's QR code is this page with the address in its fragment, which the browser keeps to itself: the iPhone app
-# opens it as a universal link, and without the app the page says what is needed
-ADD_PAGE = "https://nightdrive.sh/ferry/add"
-HOOK = os.path.join(config_dir(), "hook")
-WEB = os.path.join(ROOT, "web")                    # the page
-FONTS = os.path.join(WEB, "fonts")                 # Ferry's font for the page too (the apps' JetBrains Mono)
-FONT_FILES = ("JetBrainsMono-Regular.ttf", "JetBrainsMono-Medium.ttf", "JetBrainsMono-Bold.ttf")
-SERVICE = "ferry.service"
-UNIT = os.path.join(ROOT, "systemd", SERVICE)      # copied to USER_UNITS by `ferry enable`
-USER_UNITS = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "systemd", "user")
-APPLICATIONS = os.path.join(data_home(), "applications")     # the app list's entry, also "Open With"
-ICONS = os.path.join(data_home(), "icons", "hicolor")
-AUTOSTART = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "autostart")
-NO_TRAY = os.path.join(config_dir(), "no-tray")   # `ferry tray off`: no tray icon at login (Nightdrive has its own)
-APP = "Ferry"                # the notifications' app name
-ICON = os.path.realpath(os.path.join(WEB, "icon-192.png"))   # the app icon the phone has too (PNG: Qt draws no SVG glow)
-KEEP_DAYS = 7                # an item leaves the box after this many days
-SECRET_KEEP = 15 * 60        # seconds the box keeps a code or a password, unless it is copied sooner
-SECRET_NAMED = "Code or password"   # what a notification says in a code's or a password's place…
-SECRET_HIDDEN = SECRET_NAMED + " · open to see"   # …and when it waits in the box
-MAX_FILE = 4 << 30           # bytes per file from the phone
-MAX_TEXT = 1 << 20           # bytes of text
-PUSH_PAYLOAD = 2600          # bytes of a notification: Ferry's push relay takes 2800 encrypted (APNs' 4 KB as base64)
-MIN_FREE = 2 << 30           # bytes left free on the disk: an upload that would go below this is refused
-PREVIEW = re.compile(r"^image/(jpeg|png|gif|webp|bmp)$")   # a received image the notification shows as a picture
-INLINE = re.compile(r"^(image/(jpeg|png|gif|webp|heic|heif|avif)|video/|audio/|application/pdf$|text/plain$)")
-                             # shown in the browser; any other file is a download (an HTML or SVG file would run its
-                             # scripts as the Ferry page)
-CHUNK = 1 << 20
-GROUP_NOTIFY = 20            # seconds: files from the phone within this time share one notification
-NOTIFY_WAIT = 5              # seconds for the notification daemon to answer (none: notify-send never ends)
-PUSH_CONTACT = "mailto:hello@nightdrive.sh"   # the VAPID "sub": push services want a contact
-IDLE_AFTER = 60              # seconds without input before the computer counts as idle (docs/protocol.md: api/items)
-MACHINES_EVERY = 300         # seconds between the server's looks for the owner's other computers running Ferry
-SENT_SHOWN = 5               # seconds the menu shows "Sent" for a send (STATE/sent.json), whoever sent it
-TAILSCALE_DOWNLOAD = "https://tailscale.com/download/linux"
-TAILSCALE_DNS = "https://login.tailscale.com/admin/dns"            # where a tailnet's HTTPS certificates are turned on
-TAILSCALE_MACHINES = "https://login.tailscale.com/admin/machines"  # where a new machine is approved
-RELEASES = os.environ.get("FERRY_RELEASES") or "https://api.github.com/repos/nightdrive-sh/ferry/releases?per_page=30"
-TARBALL = "ferry-linux.tar.gz"                     # a release's Linux files (linux/release.sh), and its install.sh
-APP_ID = "sh.nightdrive.Ferry"                     # the window's app id, its .desktop file's name and its icon's
-
-
-def downloads():
-    try:
-        d = subprocess.run(["xdg-user-dir", "DOWNLOAD"], capture_output=True, text=True).stdout.strip()
-    except OSError:
-        d = ""
-    return d if d and d != os.path.expanduser("~") else os.path.expanduser("~/Downloads")
-
-
-def alias():
-    try:
-        pretty = subprocess.run(["hostnamectl", "--pretty"], capture_output=True, text=True).stdout.strip()
-    except OSError:
-        pretty = ""
-    return pretty or socket.gethostname().split(".")[0].capitalize()
-
-
-def human(n):
-    for unit in ("B", "KB", "MB", "GB"):
-        if n < 1000 or unit == "GB":
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1000
-
-
-# --- The desktop ----------------------------------------------------------------------------------------------------
 # GNOME, KDE, Hyprland and others, on Wayland and X11. Each tool runs with desktop_env(): the service has no display
 # variables of its own.
 DESKTOP_VARS = ("WAYLAND_DISPLAY", "DISPLAY", "XAUTHORITY", "XDG_CURRENT_DESKTOP", "XDG_SESSION_TYPE",
@@ -332,14 +247,14 @@ class GioBus:
 
     def call(self, method, args, reply):
         return self.conn.call_sync(NOTIFICATIONS[0], NOTIFICATIONS[1], NOTIFICATIONS[0], method, args,
-                                   self.GLib.VariantType.new(reply), self.Gio.DBusCallFlags.NONE, int(NOTIFY_WAIT * 1000),
+                                   self.GLib.VariantType.new(reply), self.Gio.DBusCallFlags.NONE, int(config.NOTIFY_WAIT * 1000),
                                    None).unpack()
 
     def notify(self, app_icon, summary, body, actions, hints, replaces=0):
         """The Notify call (its id): actions are [key, label, …], hints strings, replaces the id of the one shown in its
         place (0: none)."""
         V = self.GLib.Variant
-        return self.call("Notify", V("(susssasa{sv}i)", (APP, replaces, app_icon, summary, body, actions,
+        return self.call("Notify", V("(susssasa{sv}i)", (config.APP, replaces, app_icon, summary, body, actions,
                                                          {k: V("s", v) for k, v in hints.items()}, -1)), "(u)")[0]
 
     def close(self, nid):
@@ -443,23 +358,23 @@ def notify(summary, body="", actions=(), preview="", replaces=""):
     # window), and where the daemon doesn't answer this way.
     # The same as libnotify 0.8 sends: the picture as image-path (the image, else Ferry's icon), Ferry's icon as the
     # app's with a preview, and the .desktop's name, from which GNOME draws Ferry's icon over it (else a generic one).
-    hints = {"desktop-entry": APP_ID}
+    hints = {"desktop-entry": config.APP_ID}
     if preview:
         hints.update({"category": "transfer.complete", "image-path": file_uri(preview)})
     else:
-        hints["image-path"] = ICON
-    nid = notifications.send(ICON if preview else "", summary, body, actions, hints, int(replaces or 0))
+        hints["image-path"] = config.ICON
+    nid = notifications.send(config.ICON if preview else "", summary, body, actions, hints, int(replaces or 0))
     return nid if nid is not None else notify_send(summary, body, actions, preview, replaces)
 
 
 def notify_send(summary, body, actions, preview, replaces=""):
     # -i is the notification's picture (libnotify 0.8): with a preview the picture is the image, and the icon goes as -n
     # The .desktop's name, from which GNOME draws Ferry's icon over the notification (else a generic one)
-    cmd = ["notify-send", "-a", APP, "-p", "-h", f"string:desktop-entry:{APP_ID}"]
+    cmd = ["notify-send", "-a", config.APP, "-p", "-h", f"string:desktop-entry:{config.APP_ID}"]
     if preview:
-        cmd += ["-n", ICON, "-c", "transfer.complete", "-h", f"string:image-path:{file_uri(preview)}"]
+        cmd += ["-n", config.ICON, "-c", "transfer.complete", "-h", f"string:image-path:{file_uri(preview)}"]
     else:
-        cmd += ["-i", ICON]
+        cmd += ["-i", config.ICON]
     if replaces:
         cmd += ["-r", str(replaces)]
     for key in actions:
@@ -473,7 +388,7 @@ def notify_send(summary, body, actions, preview, replaces=""):
         return ""
     # The daemon's answer is the notification's id. Where there is no daemon (a server, a window manager without one),
     # libnotify 0.8's notify-send with buttons prints nothing and waits for ever: one left behind for every send.
-    nid = p.stdout.readline().strip() if select.select([p.stdout], [], [], NOTIFY_WAIT)[0] else ""
+    nid = p.stdout.readline().strip() if select.select([p.stdout], [], [], config.NOTIFY_WAIT)[0] else ""
     if not nid:
         p.kill()
         p.wait()
@@ -503,7 +418,7 @@ def close_notification(nid):
 def previewable(path, kind):
     """The path when the notification can show the file as a picture: the formats every desktop draws (not HEIC),
     else ""."""
-    return path if PREVIEW.match(kind or "") else ""
+    return path if config.PREVIEW.match(kind or "") else ""
 
 
 def file_uri(path):
@@ -536,10 +451,10 @@ def show_in_files(path):
 
 def hook(event):
     """Tells a desktop's own Ferry menu (Nightdrive's top bar) that something changed: HOOK with the event's name."""
-    if not os.access(HOOK, os.X_OK):
+    if not os.access(config.HOOK, os.X_OK):
         return None
     try:
-        return subprocess.Popen([HOOK, event], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=desktop_env())
+        return subprocess.Popen([config.HOOK, event], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, env=desktop_env())
     except OSError:
         return None
 
@@ -548,10 +463,9 @@ def changed():
     hook("changed")
 
 
-# --- How long the computer has been idle ----------------------------------------------------------------------------
 def idle_seconds(ms):
     """api/items' idle from milliseconds since the last key press or mouse move: 0 within the last minute."""
-    return 0 if ms < IDLE_AFTER * 1000 else int(ms // 1000)
+    return 0 if ms < config.IDLE_AFTER * 1000 else int(ms // 1000)
 
 
 class WaylandIdle:
@@ -576,8 +490,8 @@ class WaylandIdle:
             return None
         now = self.clock()
         if idled is not None:
-            return max(IDLE_AFTER, int(now - idled))
-        return 0 if now - since >= IDLE_AFTER else None
+            return max(config.IDLE_AFTER, int(now - idled))
+        return 0 if now - since >= config.IDLE_AFTER else None
 
     @staticmethod
     def open():
@@ -645,13 +559,13 @@ class WaylandIdle:
                 self.since, self.idled = self.clock(), None
             # v2's get_input_idle_notification counts only input: a video that keeps the screen on isn't someone there
             self.send(s, self.NOTIFIER_ID, 2 if version >= 2 else 1,
-                      struct.pack("=III", self.NOTIFICATION, IDLE_AFTER * 1000, self.SEAT_ID))
+                      struct.pack("=III", self.NOTIFICATION, config.IDLE_AFTER * 1000, self.SEAT_ID))
             try:
                 while True:
                     obj, op, _ = self.receive(f)
                     if obj == self.NOTIFICATION:
                         with self.lock:
-                            self.idled = self.clock() - IDLE_AFTER if op == 0 else None   # 0: idled, 1: resumed
+                            self.idled = self.clock() - config.IDLE_AFTER if op == 0 else None   # 0: idled, 1: resumed
                     elif (obj, op) == (1, 0):
                         break
             except (EOFError, OSError, struct.error):
@@ -724,7 +638,7 @@ def logind_idle(env):
         return None
     if v.get("IdleHint") != "yes":
         return 0
-    return max(0, int(time.time() - since + IDLE_AFTER))
+    return max(0, int(time.time() - since + config.IDLE_AFTER))
 
 
 def idle_for(env=None, sources=None):
@@ -739,7 +653,6 @@ def idle_for(env=None, sources=None):
     return None
 
 
-# --- Tailscale ----------------------------------------------------------------------------------------------------
 def tailscale_status():
     try:
         out = subprocess.run(["tailscale", "status", "--json"], capture_output=True, text=True, timeout=5).stdout
@@ -754,7 +667,7 @@ def url(st=None):
     name = ((st.get("Self") or {}).get("DNSName") or "").rstrip(".")
     if st.get("BackendState") != "Running" or not name:
         return ""
-    return f"https://{name}{'' if HTTPS_PORT == 443 else f':{HTTPS_PORT}'}{MOUNT}/"
+    return f"https://{name}{'' if config.HTTPS_PORT == 443 else f':{config.HTTPS_PORT}'}{config.MOUNT}/"
 
 
 def serving():
@@ -765,8 +678,8 @@ def serving():
     except (OSError, ValueError, subprocess.TimeoutExpired):
         return False
     for host, web in (cfg.get("Web") or {}).items():
-        h = (web.get("Handlers") or {}).get(MOUNT) or {}
-        if host.endswith(f":{HTTPS_PORT}") and h.get("Proxy", "").rstrip("/").endswith(f"127.0.0.1:{PORT}"):
+        h = (web.get("Handlers") or {}).get(config.MOUNT) or {}
+        if host.endswith(f":{config.HTTPS_PORT}") and h.get("Proxy", "").rstrip("/").endswith(f"127.0.0.1:{config.PORT}"):
             return True
     return False
 
@@ -837,7 +750,6 @@ class Tailnet:
         return self.names.get(ip, "")
 
 
-# --- Codes and passwords --------------------------------------------------------------------------------------------
 # Unicode's White_Space, as Swift's isWhitespace has it (Python's isspace() adds U+001C to U+001F)
 WHITESPACE = "\t\n\v\f\r \x85\xa0\u1680" + "".join(map(chr, range(0x2000, 0x200b))) + "\u2028\u2029\u202f\u205f\u3000"
 WORD_JOINERS = "-'\u2019"
@@ -867,14 +779,13 @@ def secret(item):
     return item.get("kind") == "text" and looks_secret(item.get("text"))
 
 
-# --- The box --------------------------------------------------------------------------------------------------------
 @contextlib.contextmanager
 def box(write=False):
     """The items (newest last), under a lock shared by the server and the commands; saved after a write."""
-    os.makedirs(STATE, mode=0o700, exist_ok=True)
-    with open(os.path.join(STATE, "lock"), "w") as lock:
+    os.makedirs(config.STATE, mode=0o700, exist_ok=True)
+    with open(os.path.join(config.STATE, "lock"), "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX if write else fcntl.LOCK_SH)
-        path = os.path.join(STATE, "items.json")
+        path = os.path.join(config.STATE, "items.json")
         try:
             with open(path) as f:
                 items = json.load(f).get("items") or []
@@ -891,7 +802,7 @@ def box(write=False):
 
 def alive(item):
     """Kept KEEP_DAYS days, a code or a password SECRET_KEEP (docs/protocol.md › Codes and passwords)."""
-    return time.time() - item.get("time", 0) < (SECRET_KEEP if secret(item) else KEEP_DAYS * 86400) and \
+    return time.time() - item.get("time", 0) < (config.SECRET_KEEP if secret(item) else config.KEEP_DAYS * 86400) and \
         (item.get("kind") != "file" or os.path.exists(item.get("path", "")))
 
 
@@ -963,7 +874,7 @@ def add_files(paths, device=""):
                       type=mimetypes.guess_type(src)[0] or "application/octet-stream")
         if device:
             it["for"] = device
-        d = os.path.join(STATE, "files", it["id"])
+        d = os.path.join(config.STATE, "files", it["id"])
         os.makedirs(d, exist_ok=True)
         it["path"] = os.path.join(d, it["name"])
         try:
@@ -974,20 +885,20 @@ def add_files(paths, device=""):
     with box(write=True) as items:
         items += added
     what = added[0]["name"] if len(added) == 1 else f"{len(added)} files"
-    push_all(alias(), what, item=added[0], device=device)   # iOS shows the title as "<title> from Ferry"
+    push_all(config.alias(), what, item=added[0], device=device)   # iOS shows the title as "<title> from Ferry"
     return 0
 
 
 def add_text(text, device=""):
     if not text.strip():
         return 1
-    text = text[:MAX_TEXT]
+    text = text[:config.MAX_TEXT]
     it = new_item(to="phone", kind="text", text=text)
     if device:
         it["for"] = device
     with box(write=True) as items:
         items.append(it)
-    push_all(alias(), text[:180], item=it, device=device)
+    push_all(config.alias(), text[:180], item=it, device=device)
     return 0
 
 
@@ -1016,7 +927,6 @@ def copied(item):
         changed()
 
 
-# --- Web Push (RFC 8030 / 8291 / 8292) ------------------------------------------------------------------------------
 # python3-cryptography does the elliptic curves and AES-GCM; the rest (aes128gcm framing, VAPID's JWT) is small enough to
 # write here. Fedora has no pywebpush. Without the module everything else still works, only without notifications.
 def b64u(b):
@@ -1034,11 +944,11 @@ def vapid_key(create=False):
         from cryptography.hazmat.primitives.asymmetric import ec
     except ImportError:
         return None
-    path = os.path.join(STATE, "vapid.pem")
+    path = os.path.join(config.STATE, "vapid.pem")
     if not os.path.exists(path):
         if not create:
             return None
-        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        os.makedirs(config.STATE, mode=0o700, exist_ok=True)
         pem = ec.generate_private_key(ec.SECP256R1()).private_bytes(
             serialization.Encoding.PEM, serialization.PrivateFormat.PKCS8, serialization.NoEncryption())
         fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
@@ -1083,7 +993,7 @@ def vapid_auth(key, endpoint):
     u = urllib.parse.urlsplit(endpoint)
     head = b64u(json.dumps({"typ": "JWT", "alg": "ES256"}).encode())
     claims = b64u(json.dumps({"aud": f"{u.scheme}://{u.netloc}", "exp": int(time.time()) + 3600,
-                              "sub": PUSH_CONTACT}).encode())
+                              "sub": config.PUSH_CONTACT}).encode())
     signing = f"{head}.{claims}".encode()
     r, s = decode_dss_signature(key.sign(signing, ec.ECDSA(hashes.SHA256())))
     jwt = signing.decode() + "." + b64u(r.to_bytes(32, "big") + s.to_bytes(32, "big"))
@@ -1092,7 +1002,7 @@ def vapid_auth(key, endpoint):
 
 def subscriptions(change=None):
     """The phone's push subscriptions; change(list) edits them under the box's lock."""
-    path = os.path.join(STATE, "push.json")
+    path = os.path.join(config.STATE, "push.json")
     with box(write=change is not None):
         try:
             with open(path) as f:
@@ -1111,7 +1021,7 @@ def subscriptions(change=None):
 
 def relays(change=None):
     """The computers whose pages the phone was added from (their addresses): they pass this one's notifications on."""
-    path = os.path.join(STATE, "relays.json")
+    path = os.path.join(config.STATE, "relays.json")
     with box(write=change is not None):
         try:
             with open(path) as f:
@@ -1139,7 +1049,7 @@ def phones(new=None):
     """The phones and tablets that have used Ferry here (their short tailnet names), the ones the device list shows
     (docs/protocol.md › Forgetting a device): the server adds one (new) the first time it calls, under the box's
     lock."""
-    path = os.path.join(STATE, "phones.json")
+    path = os.path.join(config.STATE, "phones.json")
     with box(write=new is not None):
         try:
             with open(path) as f:
@@ -1160,7 +1070,7 @@ def forgotten(change=None):
     """The devices the owner forgot, or brought back ({device, time, forgotten}: docs/protocol.md › Forgetting a
     device); change(list) edits them under the box's lock, and returns whether it changed anything (only then is it
     written)."""
-    path = os.path.join(STATE, "forgotten.json")
+    path = os.path.join(config.STATE, "forgotten.json")
     with box(write=change is not None):
         try:
             with open(path) as f:
@@ -1276,17 +1186,17 @@ def payload(title, body, machine="", item=None):
     if item:
         d.update(id=item["id"], kind=item["kind"])
         if secret(item):   # the lock screen shows the body; the text goes along for a tap to copy
-            d.update(body=SECRET_HIDDEN, secret=True)
+            d.update(body=config.SECRET_HIDDEN, secret=True)
     out = json.dumps(d, ensure_ascii=False).encode()
     if item and item["kind"] == "text":
         whole = json.dumps(dict(d, text=item.get("text", "")), ensure_ascii=False).encode()
-        if len(whole) <= PUSH_PAYLOAD:
+        if len(whole) <= config.PUSH_PAYLOAD:
             return whole
-    while len(out) > PUSH_PAYLOAD and (d["title"] or d["body"]):   # only absurdly long names get here
+    while len(out) > config.PUSH_PAYLOAD and (d["title"] or d["body"]):   # only absurdly long names get here
         d["body"] = d["body"][:len(d["body"]) // 2]
         d["title"] = d["title"][:len(d["title"]) // 2]
         out = json.dumps(d, ensure_ascii=False).encode()
-    if len(out) > PUSH_PAYLOAD:   # a machine address no computer has (api/relay-push takes it from the request)
+    if len(out) > config.PUSH_PAYLOAD:   # a machine address no computer has (api/relay-push takes it from the request)
         d["machine"] = ""
         out = json.dumps(d, ensure_ascii=False).encode()
     return out
@@ -1324,7 +1234,7 @@ def push_all(title, body, machine="", item=None, device=""):
     item it is about. device: only that phone (its tailnet name), "" for all. A subscription the push service no longer
     knows (404/410) goes."""
     if item and secret(item):   # a page shows the body as it is, also one this goes to through a relay
-        body = SECRET_HIDDEN
+        body = config.SECRET_HIDDEN
     if not machine:
         own = url()
         for via in relays():
@@ -1338,7 +1248,7 @@ def push_all(title, body, machine="", item=None, device=""):
         try:
             data = encrypt(content, sub["keys"]["p256dh"], sub["keys"]["auth"])
             req = urllib.request.Request(sub["endpoint"], data, method="POST", headers={
-                "Authorization": vapid_auth(key, sub["endpoint"]), "TTL": str(KEEP_DAYS * 86400),
+                "Authorization": vapid_auth(key, sub["endpoint"]), "TTL": str(config.KEEP_DAYS * 86400),
                 "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", "Urgency": "high"})
             urllib.request.urlopen(req, timeout=10).read()
         except urllib.error.HTTPError as e:
@@ -1371,7 +1281,7 @@ def relay_push(via, title, body, own, device=""):
 def probe(host):
     """Ferry on one of the owner's machines: its address, name, tailnet name (id), seconds idle and forgotten devices, or
     None (not running, asleep)."""
-    u = f"https://{host}{'' if HTTPS_PORT == 443 else f':{HTTPS_PORT}'}{MOUNT}/"
+    u = f"https://{host}{'' if config.HTTPS_PORT == 443 else f':{config.HTTPS_PORT}'}{config.MOUNT}/"
     try:
         req = urllib.request.Request(u + "api/ping", headers={"X-Ferry": "1"})
         return pinged(host, u, json.loads(urllib.request.urlopen(req, timeout=4).read()))
@@ -1388,7 +1298,7 @@ def pinged(host, u, j):
 def known_machines(change=None):
     """The owner's computers that answered as Ferry ({id, name, url, idle, seen}), kept by the server for the commands
     and the menu; one that stops answering stays, asleep, while Tailscale still lists it."""
-    path = os.path.join(STATE, "machines.json")
+    path = os.path.join(config.STATE, "machines.json")
     try:
         with open(path) as f:
             out = json.load(f)
@@ -1396,7 +1306,7 @@ def known_machines(change=None):
         out = []
     if change:
         change(out)
-        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        os.makedirs(config.STATE, mode=0o700, exist_ok=True)
         tmp = path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(out, f, ensure_ascii=False)
@@ -1437,7 +1347,6 @@ class Found:
         return sorted((r for _, r in probed.values() if r), key=lambda r: r["name"].lower())
 
 
-# --- The server -----------------------------------------------------------------------------------------------------
 STATIC = {"/manifest.webmanifest": "application/manifest+json", "/sw.js": "text/javascript",
           "/icon.svg": "image/svg+xml", "/icon-180.png": "image/png", "/icon-192.png": "image/png",
           "/icon-512.png": "image/png"}
@@ -1470,7 +1379,7 @@ class Ferry:
             learn_forgotten([e for r in found for e in r["forgotten"]])
         self.come_back()
         gone = forgotten_ids()
-        return [{"url": url(), "name": alias(), "self": True}] + \
+        return [{"url": url(), "name": config.alias(), "self": True}] + \
             [{"url": r["url"], "name": r["name"]} for r in found if r["id"] not in gone]
 
     def come_back(self):
@@ -1508,9 +1417,9 @@ class Ferry:
             with box(write=True) as items:
                 items.append(it)
         if on_clipboard:
-            later(notify, f"Copied from {who}", SECRET_NAMED if hidden else text[:300])
+            later(notify, f"Copied from {who}", config.SECRET_NAMED if hidden else text[:300])
         else:
-            later(notify, f"Text from {who}", SECRET_HIDDEN if hidden else text[:300],
+            later(notify, f"Text from {who}", config.SECRET_HIDDEN if hidden else text[:300],
                   {"copy": ("Copy", lambda: copy_text(text, sensitive=hidden) and copied(it))})
         changed()
 
@@ -1527,7 +1436,7 @@ class Ferry:
                              "show": ("Show in Files", lambda: show_in_files(path))}, previewable(path, kind))
         with self.lock:
             when, group = self.recent
-            if group is None or time.monotonic() - when >= GROUP_NOTIFY:
+            if group is None or time.monotonic() - when >= config.GROUP_NOTIFY:
                 group = {"paths": [], "nid": "", "shown": 0}   # the files, their notification's id, how many it says
             group["paths"].append(path)
             self.recent = (time.monotonic(), group)
@@ -1646,8 +1555,8 @@ def handler(app):
             self.consumed = False   # per request: the handler serves every request of a kept-alive connection
             u = urllib.parse.urlsplit(self.path)
             path = u.path
-            if path == MOUNT or path.startswith(MOUNT + "/"):   # in case tailscale serve leaves the mount point on
-                path = path[len(MOUNT):] or "/"
+            if path == config.MOUNT or path.startswith(config.MOUNT + "/"):   # in case tailscale serve leaves the mount point on
+                path = path[len(config.MOUNT):] or "/"
             return path, dict(urllib.parse.parse_qsl(u.query))
 
         def read_body(self, limit):
@@ -1672,7 +1581,7 @@ def handler(app):
                     if total > limit:
                         raise ValueError("too big")
                     while size > 0:
-                        chunk = self.rfile.read(min(CHUNK, size))
+                        chunk = self.rfile.read(min(config.CHUNK, size))
                         if not chunk:
                             raise OSError("connection closed")
                         size -= len(chunk)
@@ -1681,7 +1590,7 @@ def handler(app):
             else:
                 left = int(self.headers.get("Content-Length") or 0)
                 while left > 0:
-                    chunk = self.rfile.read(min(CHUNK, left))
+                    chunk = self.rfile.read(min(config.CHUNK, left))
                     if not chunk:
                         raise OSError("connection closed")
                     left -= len(chunk)
@@ -1697,12 +1606,12 @@ def handler(app):
             if path.startswith("/api/"):
                 self.heard()
             if path == "/":
-                with open(os.path.join(WEB, "index.html"), encoding="utf-8") as f:
-                    page = f.read().replace("%BASE%", MOUNT + "/")
+                with open(os.path.join(config.WEB, "index.html"), encoding="utf-8") as f:
+                    page = f.read().replace("%BASE%", config.MOUNT + "/")
                 self.send(200, page.encode(), "text/html; charset=utf-8")
             elif path in STATIC:
                 try:
-                    with open(os.path.join(WEB, path.lstrip("/")), "rb") as f:
+                    with open(os.path.join(config.WEB, path.lstrip("/")), "rb") as f:
                         self.send(200, f.read(), STATIC[path])
                 except OSError:
                     self.send(404, "Not found")
@@ -1710,16 +1619,16 @@ def handler(app):
                 who = self.who()
                 with box() as items:
                     out = [public(i) for i in items if for_device(i, who)]
-                self.send(200, {"computer": alias(), "items": out, "keep": KEEP_DAYS, "idle": idle_for(),
+                self.send(200, {"computer": config.alias(), "items": out, "keep": config.KEEP_DAYS, "idle": idle_for(),
                                 "push": b64u(point(app.key)) if app.key else None})
-            elif path.startswith("/font/") and path[6:] in FONT_FILES:
+            elif path.startswith("/font/") and path[6:] in config.FONT_FILES:
                 try:
-                    with open(os.path.join(FONTS, path[6:]), "rb") as f:
+                    with open(os.path.join(config.FONTS, path[6:]), "rb") as f:
                         self.send(200, f.read(), "font/ttf", {"Cache-Control": "max-age=604800"})
                 except OSError:
                     self.send(404, "Not found")   # the page falls back to the system font
             elif path == "/api/ping":
-                self.send(200, {"computer": alias(), "idle": idle_for(), "forgotten": forgotten()})
+                self.send(200, {"computer": config.alias(), "idle": idle_for(), "forgotten": forgotten()})
             elif path == "/api/machines":
                 self.send(200, {"machines": app.machines(), "push": b64u(point(app.key)) if app.key else None,
                                 "forgotten": forgotten()})
@@ -1740,9 +1649,9 @@ def handler(app):
                 size = os.fstat(f.fileno()).st_size
                 quoted = urllib.parse.quote(it["name"])
                 kind = it.get("type") or ""
-                inline = bool(INLINE.match(kind)) and not attachment
+                inline = bool(config.INLINE.match(kind)) and not attachment
                 self.send_response(200)
-                self.send_header("Content-Type", kind if INLINE.match(kind) else "application/octet-stream")
+                self.send_header("Content-Type", kind if config.INLINE.match(kind) else "application/octet-stream")
                 self.send_header("Content-Length", str(size))
                 self.send_header("Content-Disposition", f"{'inline' if inline else 'attachment'}; filename*=UTF-8''{quoted}")
                 self.send_header("X-Content-Type-Options", "nosniff")
@@ -1756,7 +1665,7 @@ def handler(app):
                 self.end_headers()
                 if self.command == "HEAD":
                     return
-                shutil.copyfileobj(f, self.wfile, CHUNK)
+                shutil.copyfileobj(f, self.wfile, config.CHUNK)
 
         def do_POST(self):
             path, q = self.route()
@@ -1765,11 +1674,11 @@ def handler(app):
             self.heard()
             try:
                 if path == "/api/text":
-                    body = json.loads(self.read_body(MAX_TEXT * 2) or b"{}")
+                    body = json.loads(self.read_body(config.MAX_TEXT * 2) or b"{}")
                     text = str(body.get("text") or "")
                     if not text.strip():
                         return self.send(400, "Empty text")
-                    app.received_text(text[:MAX_TEXT], self.who(), clip=bool(body.get("clip")))
+                    app.received_text(text[:config.MAX_TEXT], self.who(), clip=bool(body.get("clip")))
                     self.send(200, {"ok": True})
                 elif path == "/api/upload":
                     self.upload(q)
@@ -1810,7 +1719,7 @@ def handler(app):
                 elif path == "/api/relay":
                     # The page from the computer at via, switched to this one: notifications go through via
                     via = str(json.loads(self.read_body(8192) or b"{}").get("via", ""))
-                    if not (app.tailnet.same_owner(via) and via.endswith(MOUNT + "/")) or via == url():
+                    if not (app.tailnet.same_owner(via) and via.endswith(config.MOUNT + "/")) or via == url():
                         return self.send(400, "Not a Ferry page of yours")
                     relays(lambda r: r.append(via) if via not in r else None)
                     self.send(200, {"ok": True})
@@ -1826,7 +1735,7 @@ def handler(app):
                 elif path == "/api/test-push":
                     if not app.key:
                         return self.send(503, "Notifications need python3-cryptography on the computer")
-                    push_all(alias(), "Notifications work")
+                    push_all(config.alias(), "Notifications work")
                     self.send(200, {"ok": True})
                 else:
                     self.send(404, "Not found")
@@ -1835,11 +1744,11 @@ def handler(app):
 
         def upload(self, q):
             n = int(self.headers.get("Content-Length") or 0)
-            if n > MAX_FILE:
-                return self.send(413, f"Too big: {human(MAX_FILE)} at most")
-            dest = downloads()
+            if n > config.MAX_FILE:
+                return self.send(413, f"Too big: {config.human(config.MAX_FILE)} at most")
+            dest = config.downloads()
             os.makedirs(dest, exist_ok=True)
-            if shutil.disk_usage(dest).free - n < MIN_FREE:
+            if shutil.disk_usage(dest).free - n < config.MIN_FREE:
                 return self.send(507, "Not enough space on the computer")
             while True:   # a name no other upload is writing to at the same time
                 path = unique(os.path.join(dest, safe_name(q.get("name", "file"))))
@@ -1851,7 +1760,7 @@ def handler(app):
                     continue
             try:
                 with out:
-                    for chunk in self.body(MAX_FILE):
+                    for chunk in self.body(config.MAX_FILE):
                         out.write(chunk)
                         size += len(chunk)
             except (OSError, ValueError) as e:
@@ -1881,7 +1790,7 @@ class Server(ThreadingHTTPServer):
 def tidy_once():
     """Old items out of the box, also from the disk: a read leaves them in items.json. Written only when one goes."""
     try:
-        with open(os.path.join(STATE, "items.json")) as f:
+        with open(os.path.join(config.STATE, "items.json")) as f:
             stale = not all(alive(i) for i in json.load(f).get("items") or [])
     except (OSError, ValueError, AttributeError):
         return False
@@ -1906,11 +1815,11 @@ def look_around(app):
             app.machines()
         except Exception as e:   # a thread that dies would leave the list as it was for good
             print(f"looking for the other computers failed: {e!r}", flush=True)
-        time.sleep(MACHINES_EVERY + 1)   # past Ferry.machines()'s minute, so it looks again
+        time.sleep(config.MACHINES_EVERY + 1)   # past Ferry.machines()'s minute, so it looks again
 
 
 def ask_own(u):
-    req = urllib.request.Request(u, headers={"X-Ferry": "1", "User-Agent": f"Ferry/{VERSION}"})
+    req = urllib.request.Request(u, headers={"X-Ferry": "1", "User-Agent": f"Ferry/{config.VERSION}"})
     try:
         urllib.request.urlopen(req, timeout=120).close()
     except urllib.error.HTTPError:
@@ -1947,17 +1856,16 @@ def keep_warm():
 
 def run():
     app = Ferry()
-    server = Server(("127.0.0.1", PORT), handler(app))
+    server = Server(("127.0.0.1", config.PORT), handler(app))
     threading.Thread(target=tidy, daemon=True).start()
     threading.Thread(target=look_around, args=(app,), daemon=True).start()
     threading.Thread(target=WAYLAND_IDLE.run, daemon=True).start()
     threading.Thread(target=keep_warm, daemon=True).start()
-    print(f"Ferry on 127.0.0.1:{PORT}{'' if app.key else ' (no Web Push: python3-cryptography is missing)'}",
+    print(f"Ferry on 127.0.0.1:{config.PORT}{'' if app.key else ' (no Web Push: python3-cryptography is missing)'}",
           flush=True)
     server.serve_forever()
 
 
-# --- Commands -------------------------------------------------------------------------------------------------------
 def systemctl(*a):
     return subprocess.run(["systemctl", "--user", *a], capture_output=True, text=True)
 
@@ -1965,9 +1873,9 @@ def systemctl(*a):
 def status():
     """on, or off and why: enabled alone isn't on (a desktop may stop the unit and leave it enabled), the server has to
     be running too."""
-    if systemctl("is-enabled", "-q", SERVICE).returncode:
+    if systemctl("is-enabled", "-q", config.SERVICE).returncode:
         return "off"
-    if systemctl("is-active", "-q", SERVICE).returncode:
+    if systemctl("is-active", "-q", config.SERVICE).returncode:
         return "off (not running: ferry enable starts it)"
     return "on"
 
@@ -1975,8 +1883,8 @@ def status():
 def serve(on):
     """Publishes the server on the tailnet (tailscale serve; kept across reboots by tailscaled), or stops that: "", or
     what Tailscale said when it refused (serve_message() for a terminal, publish_problem() for the window)."""
-    args = [f"--https={HTTPS_PORT}", f"--set-path={MOUNT}"]
-    cmd = ["tailscale", "serve", "--bg", *args, f"http://127.0.0.1:{PORT}"] if on else \
+    args = [f"--https={config.HTTPS_PORT}", f"--set-path={config.MOUNT}"]
+    cmd = ["tailscale", "serve", "--bg", *args, f"http://127.0.0.1:{config.PORT}"] if on else \
         ["tailscale", "serve", *args, "off"]
     try:
         res = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
@@ -1996,7 +1904,6 @@ def serve_message(out):
     return out.splitlines()[-1] if out else ""
 
 
-# --- Setup: what stands between Ferry and the owner's devices -------------------------------------------------------
 def setup_step(st, have_tailscale, running, served):
     """The first thing in the way, for the window and a desktop's menu (`ferry list --json`): None when nothing is,
     else {step, title, text} with what to do: a command to run, a link to open, an action the window can take itself
@@ -2006,7 +1913,7 @@ def setup_step(st, have_tailscale, running, served):
     if not have_tailscale:
         return {"step": "tailscale-missing", "title": "Install Tailscale",
                 "text": "Ferry sends between your devices over Tailscale. Install it, and log in with the same "
-                        "account as your other devices.", "link": TAILSCALE_DOWNLOAD}
+                        "account as your other devices.", "link": config.TAILSCALE_DOWNLOAD}
     if not st:
         return {"step": "tailscale-off", "title": "Start Tailscale",
                 "text": "Tailscale is installed, but it isn't running. Start it, then log in:",
@@ -2020,7 +1927,7 @@ def setup_step(st, have_tailscale, running, served):
     if state == "NeedsMachineAuth":
         return {"step": "needs-approval", "title": "Approve this computer",
                 "text": "Your tailnet's admin approves new machines: approve this one in Tailscale's admin console.",
-                "link": TAILSCALE_MACHINES}
+                "link": config.TAILSCALE_MACHINES}
     if state != "Running":
         return {"step": "tailscale-stopped", "title": "Turn on Tailscale",
                 "text": "Tailscale is turned off on this computer, so your devices can't reach it.",
@@ -2033,7 +1940,7 @@ def setup_step(st, have_tailscale, running, served):
     if not st.get("CertDomains"):
         return {"step": "https-off", "title": "Turn on HTTPS certificates",
                 "text": "Ferry needs your tailnet's HTTPS certificates. Turn them on at the bottom of the DNS page in "
-                        "Tailscale's admin console, then try again.", "link": TAILSCALE_DNS, "action": "publish"}
+                        "Tailscale's admin console, then try again.", "link": config.TAILSCALE_DNS, "action": "publish"}
     return {"step": "not-published", "title": "Putting Ferry on your tailnet…",
             "text": "Ferry publishes itself with tailscale serve, for your devices only.", "action": "publish"}
 
@@ -2064,10 +1971,9 @@ def publish():
 def setup(st=None):
     st = tailscale_status() if st is None else st
     have = bool(shutil.which("tailscale"))
-    return setup_step(st, have, systemctl("is-active", "-q", SERVICE).returncode == 0, have and bool(st) and serving())
+    return setup_step(st, have, systemctl("is-active", "-q", config.SERVICE).returncode == 0, have and bool(st) and serving())
 
 
-# --- Updates --------------------------------------------------------------------------------------------------------
 def version_key(v):
     """1.0.0-beta.2 sorts before 1.0.0, which sorts before 1.0.1-beta.1."""
     base, _, pre = v.lstrip("v").partition("-")
@@ -2077,7 +1983,7 @@ def version_key(v):
 
 def is_beta(v=None):
     """A beta install is one running a pre-release: it follows pre-releases, until it updates to a full release."""
-    return "-" in (VERSION if v is None else v)
+    return "-" in (config.VERSION if v is None else v)
 
 
 def newest_release(releases, beta):
@@ -2088,16 +1994,16 @@ def newest_release(releases, beta):
         if r.get("draft") or (r.get("prerelease") and not beta):
             continue
         assets = {a.get("name"): a.get("browser_download_url") for a in r.get("assets") or []}
-        if assets.get(TARBALL) and assets.get("install.sh"):
+        if assets.get(config.TARBALL) and assets.get("install.sh"):
             tag = r.get("tag_name", "")
-            found.append({"version": tag.lstrip("v"), "tag": tag, "tarball": assets[TARBALL],
+            found.append({"version": tag.lstrip("v"), "tag": tag, "tarball": assets[config.TARBALL],
                           "script": assets["install.sh"]})
     return max(found, key=lambda r: version_key(r["version"]), default=None)
 
 
 def fetch_releases():
-    req = urllib.request.Request(RELEASES, headers={"Accept": "application/vnd.github+json",
-                                                    "User-Agent": f"Ferry/{VERSION}"})
+    req = urllib.request.Request(config.RELEASES, headers={"Accept": "application/vnd.github+json",
+                                                    "User-Agent": f"Ferry/{config.VERSION}"})
     with urllib.request.urlopen(req, timeout=15) as r:
         return json.load(r)
 
@@ -2105,7 +2011,7 @@ def fetch_releases():
 def check_update(fetch=fetch_releases, max_age=None):
     """A release newer than this Ferry, or None; asks GitHub unless it was asked in the last max_age seconds. The
     answer is kept in STATE/update.json for available_update(). A failed check raises (OSError, ValueError)."""
-    path = os.path.join(STATE, "update.json")
+    path = os.path.join(config.STATE, "update.json")
     try:
         with open(path) as f:
             cached = json.load(f)
@@ -2114,7 +2020,7 @@ def check_update(fetch=fetch_releases, max_age=None):
     if max_age is None or time.time() - cached.get("checked", 0) > max_age:
         latest = newest_release(fetch(), is_beta())
         cached = {"checked": time.time(), "latest": latest}
-        os.makedirs(STATE, mode=0o700, exist_ok=True)
+        os.makedirs(config.STATE, mode=0o700, exist_ok=True)
         with open(path + ".tmp", "w") as f:
             json.dump(cached, f)
         os.replace(path + ".tmp", path)
@@ -2125,12 +2031,12 @@ def available_update(cached=None):
     """The last check's newer release, without asking GitHub."""
     if cached is None:
         try:
-            with open(os.path.join(STATE, "update.json")) as f:
+            with open(os.path.join(config.STATE, "update.json")) as f:
                 cached = json.load(f)
         except (OSError, ValueError):
             return None
     latest = cached.get("latest")
-    return latest if latest and version_key(latest["version"]) > version_key(VERSION) else None
+    return latest if latest and version_key(latest["version"]) > version_key(config.VERSION) else None
 
 
 def update(check_only=False):
@@ -2142,16 +2048,16 @@ def update(check_only=False):
         print(f"Couldn't check for updates: {e}", file=sys.stderr)
         return 1
     if not new:
-        print(f"Ferry {VERSION} is the latest" + (" (beta)" if is_beta() else ""))
+        print(f"Ferry {config.VERSION} is the latest" + (" (beta)" if is_beta() else ""))
         return 0
     if check_only:
         print(f"Ferry {new['version']} is out: ferry update installs it")
         return 0
-    print(f"Updating Ferry {VERSION} to {new['version']}", flush=True)
+    print(f"Updating Ferry {config.VERSION} to {new['version']}", flush=True)
     tmp = tempfile.mkdtemp()
     try:
         script = os.path.join(tmp, "install.sh")
-        req = urllib.request.Request(new["script"], headers={"User-Agent": f"Ferry/{VERSION}"})
+        req = urllib.request.Request(new["script"], headers={"User-Agent": f"Ferry/{config.VERSION}"})
         with urllib.request.urlopen(req, timeout=30) as r, open(script, "wb") as f:
             shutil.copyfileobj(r, f)
         env = dict(os.environ, FERRY_DOWNLOAD_URL=new["tarball"])
@@ -2163,7 +2069,6 @@ def update(check_only=False):
         shutil.rmtree(tmp, ignore_errors=True)
 
 
-# --- In the desktop's app list --------------------------------------------------------------------------------------
 def quietly(*cmd):
     with contextlib.suppress(OSError, subprocess.SubprocessError):
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=30)
@@ -2172,11 +2077,11 @@ def quietly(*cmd):
 def desktop_entry(background=False):
     """Ferry's .desktop file: the window in the app list, and "Open With → Ferry" for any file, which sends it; or
     (background) the tray icon, started at login. It runs this copy of ferry."""
-    exe = os.path.join(ROOT, "bin", "ferry")
+    exe = os.path.join(config.ROOT, "bin", "ferry")
     exe = f'"{exe}"' if re.search(r"[\s\"'\\]", exe) else exe
     lines = ["[Desktop Entry]", "Type=Application", "Name=Ferry", "GenericName=Device Mailbox",
              "Comment=Send texts, the clipboard and files to your other devices over Tailscale",
-             f"Icon={APP_ID}", "Terminal=false"]
+             f"Icon={config.APP_ID}", "Terminal=false"]
     if background:
         lines += [f"Exec={exe} app --background", "NoDisplay=true", "X-GNOME-Autostart-enabled=true"]
     else:
@@ -2199,52 +2104,52 @@ def write_file(path, text):
 def file_manager_menus():
     """"Send with Ferry" in the file managers' own menus, for the selected files: {path: (text, executable)}. GNOME
     Files has it under Scripts, Dolphin (KDE) and Nemo (Cinnamon) in the menu itself."""
-    exe = os.path.join(ROOT, "bin", "ferry")
+    exe = os.path.join(config.ROOT, "bin", "ferry")
     quoted = f'"{exe}"' if re.search(r"[\s\"'\\]", exe) else exe
-    data, home = data_home(), os.path.expanduser("~")
+    data, home = config.data_home(), os.path.expanduser("~")
     return {
         os.path.join(data, "nautilus", "scripts", "Send with Ferry"):
             (f'#!/bin/sh\n# Ferry\'s "Send with Ferry" in GNOME Files (Scripts): the selected files, after picking the device\n'
              f'exec "{exe}" app "$@"\n', True),
-        os.path.join(data, "kio", "servicemenus", APP_ID + ".desktop"):
+        os.path.join(data, "kio", "servicemenus", config.APP_ID + ".desktop"):
             ("[Desktop Entry]\nType=Service\nMimeType=all/allfiles;\nActions=send;\nX-KDE-Priority=TopLevel\n\n"
-             f"[Desktop Action send]\nName=Send with Ferry\nIcon={APP_ID}\nExec={quoted} app %F\n", True),
+             f"[Desktop Action send]\nName=Send with Ferry\nIcon={config.APP_ID}\nExec={quoted} app %F\n", True),
         os.path.join(data, "nemo", "actions", "ferry.nemo_action"):
             ("[Nemo Action]\nName=Send with Ferry\nComment=Send the selected files to one of your devices\n"
-             f"Exec={quoted} app %F\nIcon-Name={APP_ID}\nSelection=notnone\nExtensions=nodirs;\n", False),
+             f"Exec={quoted} app %F\nIcon-Name={config.APP_ID}\nSelection=notnone\nExtensions=nodirs;\n", False),
     }
 
 
 def install_launcher():
     """Ferry in the app list and the file managers' menus, its icon, and its tray icon at login unless
     `ferry tray off`."""
-    write_file(os.path.join(APPLICATIONS, APP_ID + ".desktop"), desktop_entry())
+    write_file(os.path.join(config.APPLICATIONS, config.APP_ID + ".desktop"), desktop_entry())
     for path, (text, executable) in file_manager_menus().items():
         write_file(path, text)
         if executable:   # Dolphin runs a service menu only if it is
             os.chmod(path, 0o755)
     for size in (192, 512):
-        d = os.path.join(ICONS, f"{size}x{size}", "apps")
+        d = os.path.join(config.ICONS, f"{size}x{size}", "apps")
         os.makedirs(d, exist_ok=True)
-        shutil.copyfile(os.path.join(WEB, f"icon-{size}.png"), os.path.join(d, APP_ID + ".png"))
+        shutil.copyfile(os.path.join(config.WEB, f"icon-{size}.png"), os.path.join(d, config.APP_ID + ".png"))
     set_tray(tray_wanted())
-    quietly("update-desktop-database", APPLICATIONS)
-    quietly("gtk-update-icon-cache", "-q", "-t", ICONS)
+    quietly("update-desktop-database", config.APPLICATIONS)
+    quietly("gtk-update-icon-cache", "-q", "-t", config.ICONS)
 
 
 def tray_wanted():
-    return not os.path.exists(NO_TRAY)
+    return not os.path.exists(config.NO_TRAY)
 
 
 def set_tray(on):
     """The tray icon at login, or not (remembered across updates)."""
-    path = os.path.join(AUTOSTART, APP_ID + ".desktop")
+    path = os.path.join(config.AUTOSTART, config.APP_ID + ".desktop")
     if on:
         with contextlib.suppress(OSError):
-            os.remove(NO_TRAY)
+            os.remove(config.NO_TRAY)
         write_file(path, desktop_entry(background=True))
     else:
-        write_file(NO_TRAY, "")
+        write_file(config.NO_TRAY, "")
         with contextlib.suppress(OSError):
             os.remove(path)
 
@@ -2283,7 +2188,7 @@ def target(devs=None):
     phone (one online first), else another computer; None when there's no other device."""
     devs = devices() if devs is None else devs
     try:
-        with open(os.path.join(STATE, "target")) as f:
+        with open(os.path.join(config.STATE, "target")) as f:
             picked = f.read().strip()
     except OSError:
         picked = ""
@@ -2295,30 +2200,30 @@ def target(devs=None):
 
 
 def set_target(device_id):
-    os.makedirs(STATE, mode=0o700, exist_ok=True)
-    with open(os.path.join(STATE, "target"), "w") as f:
+    os.makedirs(config.STATE, mode=0o700, exist_ok=True)
+    with open(os.path.join(config.STATE, "target"), "w") as f:
         f.write(device_id + "\n")
 
 
 def mark_sent(what, to, error=""):
     """What was just sent and to whom, for the menu's "Sent" (it shows the newest for a few seconds), or why a send
     didn't go (error), so the menu's button stops waiting."""
-    os.makedirs(STATE, mode=0o700, exist_ok=True)
-    tmp = os.path.join(STATE, "sent.json.tmp")
+    os.makedirs(config.STATE, mode=0o700, exist_ok=True)
+    tmp = os.path.join(config.STATE, "sent.json.tmp")
     with open(tmp, "w") as f:
         json.dump(dict({"time": time.time(), "what": what, "to": to}, **({"error": error} if error else {})), f,
                   ensure_ascii=False)
-    os.replace(tmp, os.path.join(STATE, "sent.json"))
+    os.replace(tmp, os.path.join(config.STATE, "sent.json"))
     changed()
 
 
 def last_sent():
     try:
-        with open(os.path.join(STATE, "sent.json")) as f:
+        with open(os.path.join(config.STATE, "sent.json")) as f:
             d = json.load(f)
     except (OSError, ValueError):
         return None
-    return d if time.time() - d.get("time", 0) < SENT_SHOWN else None
+    return d if time.time() - d.get("time", 0) < config.SENT_SHOWN else None
 
 
 def machine_url(device_id):
@@ -2356,7 +2261,7 @@ def deliver(dev, files=None, text=None, clip=False):
             return f"{dev['name']} isn't running Ferry"
         try:
             if files is None:
-                post(base + "api/text", json.dumps({"text": text[:MAX_TEXT], "clip": clip}, ensure_ascii=False).encode(),
+                post(base + "api/text", json.dumps({"text": text[:config.MAX_TEXT], "clip": clip}, ensure_ascii=False).encode(),
                      {"Content-Type": "application/json"})
             for path in files or []:
                 kind = mimetypes.guess_type(path)[0] or "application/octet-stream"
@@ -2376,20 +2281,20 @@ def listing():
     st = tailscale_status()
     with box() as items:
         out = [dict(public(i), path=i.get("path", "")) for i in items]
-    subs = subscriptions() if os.path.exists(os.path.join(STATE, "push.json")) else []
+    subs = subscriptions() if os.path.exists(os.path.join(config.STATE, "push.json")) else []
     devs = devices(st)
     t = target(devs)
-    on = systemctl("is-active", "-q", SERVICE).returncode == 0
+    on = systemctl("is-active", "-q", config.SERVICE).returncode == 0
     have = bool(shutil.which("tailscale"))
     served = have and bool(st) and serving()
     return {"on": on, "tailscale": st.get("BackendState") == "Running", "url": url(st), "serving": served,
             "setup": setup_step(st, have, on, served), "push": len(subs), "items": out, "devices": devs,
-            "target": t["id"] if t else "", "sent": last_sent(), "version": VERSION, "update": available_update()}
+            "target": t["id"] if t else "", "sent": last_sent(), "version": config.VERSION, "update": available_update()}
 
 
 def add_link(u):
     """What Add Device's QR code holds for the address `u` (docs/protocol.md › Clients › Adding a phone)."""
-    return f"{ADD_PAGE}#{u}" if u else ""
+    return f"{config.ADD_PAGE}#{u}" if u else ""
 
 
 def qr(svg):
@@ -2400,14 +2305,13 @@ def qr(svg):
         return 1
     if not svg:
         return subprocess.run(["qrencode", "-t", "ANSIUTF8", "-m", "2", add_link(u)]).returncode
-    os.makedirs(os.path.dirname(QR), exist_ok=True)
-    subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "--foreground=000000", "--background=FFFFFF", "-o", QR,
+    os.makedirs(os.path.dirname(config.QR), exist_ok=True)
+    subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "--foreground=000000", "--background=FFFFFF", "-o", config.QR,
                     add_link(u)], check=True)
-    print(QR)
+    print(config.QR)
     return 0
 
 
-# --- In a terminal --------------------------------------------------------------------------------------------------
 def numbered():
     """The box as `ferry list` numbers it: what was received, then what was sent, each newest first (so 1 is the newest
     received, which `ferry get` takes)."""
@@ -2461,7 +2365,7 @@ def print_list():
         head = f"  {n:>{pad}}  {ago(it.get('time', 0)):<10}  "
         who = f"  · {it['from']}" if it.get("from") else f"  · for {it['for']}" if it.get("for") else ""
         room = max(width - len(head) - len(who), 20)
-        what = f"{it.get('name', '')}  {human(it.get('size', 0))}" if it.get("kind") == "file" else \
+        what = f"{it.get('name', '')}  {config.human(it.get('size', 0))}" if it.get("kind") == "file" else \
             '"' + oneline(it.get("text", ""), room - 2) + '"'
         print(head + fit(what, room) + who)
     if any(i.get("to") == "computer" and not i.get("seen") for i in items):
@@ -2506,7 +2410,7 @@ def send(args, dev):
         files = file_paths(args)
         err = deliver(dev, files=args)
         what = f"{os.path.basename(files[0]) if len(files) == 1 else f'{len(files)} files'}" + \
-            (f" ({human(sum(os.path.getsize(f) for f in files))})" if files else "")
+            (f" ({config.human(sum(os.path.getsize(f) for f in files))})" if files else "")
     else:
         text = " ".join(args)
         err, what = deliver(dev, text=text), f'"{oneline(text, 60)}"'
@@ -2559,16 +2463,16 @@ def pick_files(title):
 
 def install_unit():
     """The unit into the user's units, its ExecStart naming this copy of ferry (the installed one, or a checkout's)."""
-    with open(UNIT) as f:
+    with open(config.UNIT) as f:
         unit = f.read()
     exe = os.path.realpath(__file__).replace("%", "%%")
     exe = f'"{exe}"' if re.search(r"\s", exe) else exe
     unit = re.sub(r"(?m)^ExecStart=.*$", lambda _: f"ExecStart={exe} run", unit)
-    os.makedirs(USER_UNITS, exist_ok=True)
-    tmp = os.path.join(USER_UNITS, SERVICE + ".tmp")
+    os.makedirs(config.USER_UNITS, exist_ok=True)
+    tmp = os.path.join(config.USER_UNITS, config.SERVICE + ".tmp")
     with open(tmp, "w") as f:
         f.write(unit)
-    os.replace(tmp, os.path.join(USER_UNITS, SERVICE))
+    os.replace(tmp, os.path.join(config.USER_UNITS, config.SERVICE))
 
 
 def enable():
@@ -2580,7 +2484,7 @@ def enable():
     install_unit()
     install_launcher()
     systemctl("daemon-reload")
-    for args in (("enable", SERVICE), ("restart", SERVICE)):
+    for args in (("enable", config.SERVICE), ("restart", config.SERVICE)):
         res = systemctl(*args)
         if res.returncode:
             print(res.stderr.strip() or f"systemctl --user {' '.join(args)} failed", file=sys.stderr)
@@ -2597,13 +2501,12 @@ def enable():
     return 0
 
 
-# --- Moving from Nightdrive's plugin --------------------------------------------------------------------------------
 def stop_old():
     """Nightdrive's Ferry plugin's server, off for good: this one takes its port and its state."""
-    systemctl("disable", "--now", OLD_SERVICE)
+    systemctl("disable", "--now", config.OLD_SERVICE)
 
 
-def migrate(old=OLD_STATE, new=STATE, stop=stop_old):
+def migrate(old=config.OLD_STATE, new=config.STATE, stop=stop_old):
     """Moves the state of Nightdrive's Ferry plugin here, once: the VAPID key the phones' subscriptions are bound to,
     the subscriptions, the computers found and the box, so the phones keep their notifications and the box its items.
     True when it moved.
@@ -2651,23 +2554,23 @@ def main():
     cmd = a[0] if a else "status"
     try:
         if cmd not in ("version", "--version", "help", "-h", "--help") and migrate():
-            print(f"Ferry's state moved from {OLD_STATE} to {STATE}", file=sys.stderr)
+            print(f"Ferry's state moved from {config.OLD_STATE} to {config.STATE}", file=sys.stderr)
     except OSError as e:   # nothing may start over with a new state (and VAPID key) beside a half-moved one
-        print(f"Couldn't move Ferry's state from {OLD_STATE} to {STATE}: {e}", file=sys.stderr)
+        print(f"Couldn't move Ferry's state from {config.OLD_STATE} to {config.STATE}: {e}", file=sys.stderr)
         return 1
     if cmd == "status":
         print(status())
     elif cmd == "enable":
         return enable()
     elif cmd == "disable":
-        systemctl("disable", "--now", SERVICE)
+        systemctl("disable", "--now", config.SERVICE)
         err = serve(False)
         if err:
             print(serve_message(err), file=sys.stderr)
     elif cmd == "run":
         run()
     elif cmd == "app":
-        sys.path.insert(0, os.path.join(ROOT, "app"))
+        sys.path.insert(0, os.path.join(config.ROOT, "app"))
         import ferry_app
         return ferry_app.main(sys.modules[__name__], a[1:])
     elif cmd == "update" and a[1:] in ([], ["--check"]):
@@ -2678,7 +2581,7 @@ def main():
         else:
             set_tray(a[1] == "on")
     elif cmd in ("version", "--version"):
-        print(VERSION)
+        print(config.VERSION)
     elif cmd == "url":
         u = url()
         print(u)

@@ -4,11 +4,13 @@ linux/:
     python3 -m unittest discover -s tests -p test_qr.py
 """
 import os
+import shutil
+import subprocess
 import tempfile
 import unittest
 from unittest import mock
 
-from load import ferry
+from load import bin_ferry, config
 
 ADDRESS = "https://pc.tail0.ts.net/ferry/"
 LINK = "https://nightdrive.sh/ferry/add#https://pc.tail0.ts.net/ferry/"
@@ -16,20 +18,20 @@ LINK = "https://nightdrive.sh/ferry/add#https://pc.tail0.ts.net/ferry/"
 
 class AddLink(unittest.TestCase):
     def test_the_address_is_in_the_fragment(self):
-        self.assertEqual(ferry.add_link(ADDRESS), LINK)
+        self.assertEqual(bin_ferry.add_link(ADDRESS), LINK)
 
     def test_no_address_no_link(self):
-        self.assertEqual(ferry.add_link(""), "")
+        self.assertEqual(bin_ferry.add_link(""), "")
 
 
 class Qr(unittest.TestCase):
     def setUp(self):
         self.runs = []
         tmp = tempfile.mkdtemp()
-        for p in [mock.patch.object(ferry, "url", return_value=ADDRESS),
-                  mock.patch.object(ferry, "QR", os.path.join(tmp, "qr.svg")),
-                  mock.patch.object(ferry.shutil, "which", return_value="/usr/bin/qrencode"),
-                  mock.patch.object(ferry.subprocess, "run", side_effect=self.run_)]:
+        for p in [mock.patch.object(bin_ferry, "url", return_value=ADDRESS),
+                  mock.patch.object(config, "QR", os.path.join(tmp, "qr.svg")),
+                  mock.patch.object(shutil, "which", return_value="/usr/bin/qrencode"),
+                  mock.patch.object(subprocess, "run", side_effect=self.run_)]:
             p.start()
             self.addCleanup(p.stop)
 
@@ -39,12 +41,12 @@ class Qr(unittest.TestCase):
 
     def test_terminal_code_holds_the_link(self):
         with mock.patch("sys.stdout"):
-            self.assertEqual(ferry.qr(svg=False), 0)
+            self.assertEqual(bin_ferry.qr(svg=False), 0)
         self.assertEqual(self.runs[-1][-1], LINK)
 
     def test_menu_svg_holds_the_link(self):
         with mock.patch("sys.stdout"):
-            self.assertEqual(ferry.qr(svg=True), 0)
+            self.assertEqual(bin_ferry.qr(svg=True), 0)
         self.assertEqual(self.runs[-1][-1], LINK)
 
 

@@ -10,6 +10,7 @@ without one, it quits, and `--background` (the login item) quits at once."""
 import ctypes
 import ctypes.util
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -26,6 +27,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import devices_page  # noqa: E402
 import look  # noqa: E402
+from ferry import config  # noqa: E402
 
 core = None              # bin/ferry, as a module (main())
 REFRESH = 5              # seconds between looks at the box and the devices while the window shows
@@ -57,7 +59,7 @@ def load_fonts():
     try:
         fc = ctypes.CDLL(ctypes.util.find_library("fontconfig") or "libfontconfig.so.1")
         fc.FcConfigAppFontAddDir.argtypes = [ctypes.c_void_p, ctypes.c_char_p]
-        fc.FcConfigAppFontAddDir(None, core.FONTS.encode())
+        fc.FcConfigAppFontAddDir(None, config.FONTS.encode())
     except (OSError, AttributeError):
         pass
 
@@ -210,7 +212,7 @@ class Window(Gtk.ApplicationWindow):
         # window rule floats it at this size in the middle, and its ⌘⇧T tiles it.
         self.set_default_size(400, 620)
         self.set_resizable(HYPRLAND)
-        self.set_icon_name(core.APP_ID)
+        self.set_icon_name(config.APP_ID)
         self.data = None             # core.listing(), the last one
         self.refused = None          # tailscale serve's refusal: not asked again until Try Again
         self.acting = False          # a setup step's button is at work
@@ -423,7 +425,7 @@ class Window(Gtk.ApplicationWindow):
     def more_menu(self):
         entries = [("Add Device…", lambda: self.show_page("add")), ("Devices…", lambda: self.show_page("devices")),
                    ("Check for Updates", lambda: self.check_update(force=True)), "-",
-                   (f"Ferry {core.VERSION}", None, "dim")]
+                   (f"Ferry {config.VERSION}", None, "dim")]
         if self.app.tray:
             entries += ["-", ("Quit Ferry", self.app.quit)]
         return menu_popover(entries)
@@ -1029,7 +1031,7 @@ class Window(Gtk.ApplicationWindow):
                 r = subprocess.run(["tailscale", "up"], capture_output=True, text=True, timeout=60)
                 return ("up", (r.stdout + r.stderr).strip() if r.returncode else "")
             if action == "operator":
-                exe = core.shutil.which("tailscale") or "tailscale"
+                exe = shutil.which("tailscale") or "tailscale"
                 r = subprocess.run(["pkexec", exe, "set", f"--operator={user}"], capture_output=True, text=True)
                 if r.returncode == 0:
                     return ("publish", core.publish())
@@ -1187,7 +1189,7 @@ class Window(Gtk.ApplicationWindow):
             if kind == "ok":
                 self.update, self.update_error = value, ""
                 if force and not value:
-                    self.flash(f"Ferry {core.VERSION} is the latest.")
+                    self.flash(f"Ferry {config.VERSION} is the latest.")
             elif force:
                 self.flash("Couldn't check for updates.")
             self.render()
@@ -1202,7 +1204,7 @@ class Window(Gtk.ApplicationWindow):
         """`ferry update` (the release's install script), then this app again, as the new version."""
         self.updating, self.update_error = True, ""
         self.render()
-        exe = os.path.join(core.ROOT, "bin", "ferry")
+        exe = os.path.join(config.ROOT, "bin", "ferry")
 
         def work():
             r = subprocess.run([sys.executable, exe, "update"], capture_output=True, text=True,
@@ -1305,11 +1307,11 @@ WATCHER = "org.kde.StatusNotifierWatcher"
 
 def pixmap(count, size):
     """The tray icon as SNI's (width, height, ARGB32 in network byte order)."""
-    desktop = os.environ.get("XDG_CURRENT_DESKTOP") or core.manager_env().get("XDG_CURRENT_DESKTOP", "")
+    current = os.environ.get("XDG_CURRENT_DESKTOP") or core.manager_env().get("XDG_CURRENT_DESKTOP", "")
     loader = GdkPixbuf.PixbufLoader.new_with_type("svg")
     loader.set_size(size, size)
-    white = look.tray_white(desktop, config_dirs=os.environ.get("XDG_CONFIG_DIRS", ""))
-    loader.write(look.tray_svg(count, size, white=white, thin="kde" in desktop.lower().split(":")).encode())
+    white = look.tray_white(current, config_dirs=os.environ.get("XDG_CONFIG_DIRS", ""))
+    loader.write(look.tray_svg(count, size, white=white, thin="kde" in current.lower().split(":")).encode())
     loader.close()
     pb = loader.get_pixbuf()
     if not pb.get_has_alpha():
@@ -1485,7 +1487,7 @@ class Tray:
 # --- The app --------------------------------------------------------------------------------------------------------
 class App(Gtk.Application):
     def __init__(self):
-        super().__init__(application_id=core.APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
+        super().__init__(application_id=config.APP_ID, flags=Gio.ApplicationFlags.HANDLES_COMMAND_LINE)
         self.window = None
         self.tray = None           # the tray icon, once a tray took it
         self.trying_tray = None
@@ -1501,10 +1503,10 @@ class App(Gtk.Application):
         Gtk.StyleContext.add_provider_for_display(Gdk.Display.get_default(), self.provider,
                                                   Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION)
         self.follow_appearance()
-        Gtk.Window.set_default_icon_name(core.APP_ID)
+        Gtk.Window.set_default_icon_name(config.APP_ID)
         # The box's changes, for the tray's count: items.json is replaced on every write
-        os.makedirs(core.STATE, mode=0o700, exist_ok=True)
-        self.monitor = Gio.File.new_for_path(core.STATE).monitor_directory(Gio.FileMonitorFlags.NONE, None)
+        os.makedirs(config.STATE, mode=0o700, exist_ok=True)
+        self.monitor = Gio.File.new_for_path(config.STATE).monitor_directory(Gio.FileMonitorFlags.NONE, None)
         self.monitor.connect("changed", self.state_changed)
 
     def do_command_line(self, cmdline):
@@ -1677,7 +1679,7 @@ class App(Gtk.Application):
 
     def restart(self):
         """After an update: the new Ferry's app in this one's place, its window shown."""
-        exe = os.path.join(core.ROOT, "bin", "ferry")
+        exe = os.path.join(config.ROOT, "bin", "ferry")
         if self.tray:
             self.tray.close()
         os.execv(sys.executable, [sys.executable, exe, "app"])
@@ -1686,7 +1688,7 @@ class App(Gtk.Application):
 def main(ferry, args):
     global core
     core = ferry
-    GLib.set_prgname(core.APP_ID)
+    GLib.set_prgname(config.APP_ID)
     GLib.set_application_name("Ferry")
     if not Gtk.init_check() or Gdk.Display.get_default() is None:
         print("Ferry's window needs a desktop: in a terminal, `ferry help` says what the ferry command does",

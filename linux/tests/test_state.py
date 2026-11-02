@@ -6,17 +6,18 @@ Run from linux/:
 import json
 import os
 import tempfile
+import time
 import unittest
 
-from load import ferry
+from load import bin_ferry, config
 
 
 class StateDir(unittest.TestCase):
     def test_follows_xdg_data_home(self):
-        self.assertEqual(ferry.state_dir({"XDG_DATA_HOME": "/data"}, "/home/u"), "/data/ferry")
+        self.assertEqual(config.state_dir({"XDG_DATA_HOME": "/data"}, "/home/u"), "/data/ferry")
 
     def test_defaults_to_local_share(self):
-        self.assertEqual(ferry.state_dir({}, "/home/u"), "/home/u/.local/share/ferry")
+        self.assertEqual(config.state_dir({}, "/home/u"), "/home/u/.local/share/ferry")
 
 
 class Migrate(unittest.TestCase):
@@ -48,7 +49,7 @@ class Migrate(unittest.TestCase):
         for path in (self.phone_file, self.received):
             with open(path, "w") as f:
                 f.write("bytes")
-        now = ferry.time.time()
+        now = time.time()
         self.items = [
             {"id": "a1b2c3d4e5f6", "to": "phone", "kind": "file", "name": "photo.jpg", "size": 5, "type": "image/jpeg",
              "path": self.phone_file, "for": "iphone", "time": now},
@@ -66,7 +67,7 @@ class Migrate(unittest.TestCase):
 
     def migrate(self):
         # The old server is stopped first, while its state is still where it left it
-        return ferry.migrate(self.old, self.new, stop=lambda: self.stopped.append(os.path.isdir(self.old)))
+        return bin_ferry.migrate(self.old, self.new, stop=lambda: self.stopped.append(os.path.isdir(self.old)))
 
     def test_moves_everything(self):
         self.assertTrue(self.migrate())
@@ -88,12 +89,12 @@ class Migrate(unittest.TestCase):
 
     def test_the_box_is_whole_afterwards(self):   # a write prunes items whose file is gone: none may look gone
         self.migrate()
-        state, ferry.STATE = ferry.STATE, self.new
+        state, config.STATE = config.STATE, self.new
         try:
-            with ferry.box(write=True) as items:
+            with bin_ferry.box(write=True) as items:
                 self.assertEqual([i["id"] for i in items], [i["id"] for i in self.items])
         finally:
-            ferry.STATE = state
+            config.STATE = state
 
     def test_the_state_stays_private(self):
         os.chmod(self.old, 0o755)
@@ -102,7 +103,7 @@ class Migrate(unittest.TestCase):
 
     def test_nothing_to_move(self):
         empty = os.path.join(self.tmp.name, "none")
-        self.assertFalse(ferry.migrate(empty, self.new, stop=lambda: self.stopped.append(True)))
+        self.assertFalse(bin_ferry.migrate(empty, self.new, stop=lambda: self.stopped.append(True)))
         self.assertFalse(os.path.exists(self.new))
         self.assertEqual(self.stopped, [])
 

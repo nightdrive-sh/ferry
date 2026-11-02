@@ -4,7 +4,7 @@
 """
 import unittest
 
-from load import ferry
+from load import bin_ferry
 
 
 class Clock:
@@ -24,7 +24,7 @@ class Found(unittest.TestCase):
         def probe(host):
             self.asked.append(host)
             return {"url": f"https://{host}/ferry/", "name": host.upper()} if self.running.get(host) else None
-        self.found = ferry.Found(probe=probe, clock=self.clock)
+        self.found = bin_ferry.Found(probe=probe, clock=self.clock)
 
     def names(self, online):
         return [m["name"] for m in self.found.get(online)]

@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from load import ferry
+from load import bin_ferry, config, owner
 from test_devices import STATUS
 
 
@@ -26,192 +26,192 @@ class Merge(unittest.TestCase):
     def test_the_later_decision_wins(self):
         mine = [entry("studio", 10.0), entry("iphone", 30.0, False)]
         theirs = [entry("studio", 20.0, False), entry("iphone", 20.0)]
-        self.assertEqual(ferry.merge_forgotten(mine, theirs), [entry("iphone", 30.0, False), entry("studio", 20.0, False)])
+        self.assertEqual(bin_ferry.merge_forgotten(mine, theirs), [entry("iphone", 30.0, False), entry("studio", 20.0, False)])
 
     def test_forgetting_wins_a_tie(self):
-        self.assertEqual(ferry.merge_forgotten([entry("studio", 5.0, False)], [entry("studio", 5.0)]),
+        self.assertEqual(bin_ferry.merge_forgotten([entry("studio", 5.0, False)], [entry("studio", 5.0)]),
                          [entry("studio", 5.0)])
-        self.assertEqual(ferry.merge_forgotten([entry("studio", 5.0)], [entry("studio", 5.0, False)]),
+        self.assertEqual(bin_ferry.merge_forgotten([entry("studio", 5.0)], [entry("studio", 5.0, False)]),
                          [entry("studio", 5.0)])
 
     def test_new_devices_are_taken_in(self):
-        self.assertEqual(ferry.merge_forgotten([], [entry("ipad", 1.0)]), [entry("ipad", 1.0)])
+        self.assertEqual(bin_ferry.merge_forgotten([], [entry("ipad", 1.0)]), [entry("ipad", 1.0)])
 
     def test_what_isnt_an_entry_is_left_out(self):   # another computer's answer is not to be trusted with our state
         theirs = [entry("ok", 1.0), "x", None, {"device": "no time", "time": 1.0, "forgotten": True},
                   {"device": "studio", "time": "1", "forgotten": True}, {"device": "studio", "time": 1.0},
                   {"device": "studio", "time": 1.0, "forgotten": 1}, {"device": "a" * 64, "time": 1.0, "forgotten": True},
                   {"device": "studio", "time": float("nan"), "forgotten": True}, {"device": "x", "time": True, "forgotten": True}]
-        self.assertEqual(ferry.merge_forgotten([], theirs), [entry("ok", 1.0)])
-        self.assertEqual(ferry.merge_forgotten([], {"not": "a list"}), [])
-        self.assertEqual(ferry.merge_forgotten([], None), [])
+        self.assertEqual(bin_ferry.merge_forgotten([], theirs), [entry("ok", 1.0)])
+        self.assertEqual(bin_ferry.merge_forgotten([], {"not": "a list"}), [])
+        self.assertEqual(bin_ferry.merge_forgotten([], None), [])
 
     def test_a_time_too_big_for_a_float_is_left_out(self):   # json.loads takes a 400-digit integer
-        self.assertEqual(ferry.merge_forgotten([], [entry("studio", 10 ** 400)]), [])
+        self.assertEqual(bin_ferry.merge_forgotten([], [entry("studio", 10 ** 400)]), [])
 
     def test_extra_fields_are_dropped(self):
-        self.assertEqual(ferry.merge_forgotten([], [dict(entry("studio", 2), name="x")]), [entry("studio", 2.0)])
+        self.assertEqual(bin_ferry.merge_forgotten([], [dict(entry("studio", 2), name="x")]), [entry("studio", 2.0)])
 
 
 class State(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.state, ferry.STATE = ferry.STATE, self.tmp.name
+        self.state, config.STATE = config.STATE, self.tmp.name
         self.hooks = []
-        self.hook, ferry.changed = ferry.changed, lambda: self.hooks.append(1)
+        self.hook, bin_ferry.changed = bin_ferry.changed, lambda: self.hooks.append(1)
         with open(os.path.join(self.tmp.name, "machines.json"), "w") as f:
             json.dump([{"id": "nightdrive-pc", "name": "Nightdrive PC", "url": "https://pc/ferry/", "idle": 0},
                        {"id": "studio", "name": "Studio", "url": "https://studio/ferry/", "idle": 900}], f)
-        ferry.phones("iphone")
-        ferry.phones("ipad")
+        bin_ferry.phones("iphone")
+        bin_ferry.phones("ipad")
 
     def tearDown(self):
-        ferry.STATE = self.state
-        ferry.changed = self.hook
+        config.STATE = self.state
+        bin_ferry.changed = self.hook
         self.tmp.cleanup()
 
     def subscribe(self, endpoint, device, direct=True):
         sub = {"endpoint": endpoint, "keys": {"p256dh": "k", "auth": "a"}, "direct": direct}
-        return ferry.subscribe(ferry.subscription(sub, device))
+        return bin_ferry.subscribe(bin_ferry.subscription(sub, device))
 
     def endpoints(self):
-        return [s["endpoint"] for s in ferry.subscriptions()]
+        return [s["endpoint"] for s in bin_ferry.subscriptions()]
 
     def test_nothing_forgotten_at_first(self):
-        self.assertEqual(ferry.forgotten(), [])
-        self.assertEqual(ferry.forgotten_ids(), set())
+        self.assertEqual(bin_ferry.forgotten(), [])
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
 
     def test_forget_leaves_the_device_lists(self):
-        ferry.decide("studio", True)
-        ferry.decide("iphone", True)
-        self.assertEqual([d["id"] for d in ferry.devices(STATUS)], ["nightdrive-pc", "ipad"])
-        self.assertEqual(ferry.forgotten_ids(), {"studio", "iphone"})
+        bin_ferry.decide("studio", True)
+        bin_ferry.decide("iphone", True)
+        self.assertEqual([d["id"] for d in bin_ferry.devices(STATUS)], ["nightdrive-pc", "ipad"])
+        self.assertEqual(bin_ferry.forgotten_ids(), {"studio", "iphone"})
         self.assertTrue(self.hooks)   # the desktop's menu hears of it
 
     def test_unforget_brings_it_back_and_keeps_the_entry(self):   # api/unforget {"device"}: a computer added again
-        ferry.decide("studio", True, now=lambda: 100.0)
-        ferry.decide("studio", False, now=lambda: 200.0)
-        self.assertIn("studio", [d["id"] for d in ferry.devices(STATUS)])
-        self.assertEqual(ferry.forgotten(), [entry("studio", 200.0, False)])
+        bin_ferry.decide("studio", True, now=lambda: 100.0)
+        bin_ferry.decide("studio", False, now=lambda: 200.0)
+        self.assertIn("studio", [d["id"] for d in bin_ferry.devices(STATUS)])
+        self.assertEqual(bin_ferry.forgotten(), [entry("studio", 200.0, False)])
 
     def test_a_decision_here_beats_what_is_known_here(self):   # another computer's clock may be ahead of this one's
-        ferry.learn_forgotten([entry("studio", 5000.0)])
-        ferry.decide("studio", False, now=lambda: 100.0)
-        self.assertEqual(ferry.forgotten_ids(), set())
-        self.assertGreater(ferry.forgotten()[0]["time"], 5000.0)
+        bin_ferry.learn_forgotten([entry("studio", 5000.0)])
+        bin_ferry.decide("studio", False, now=lambda: 100.0)
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
+        self.assertGreater(bin_ferry.forgotten()[0]["time"], 5000.0)
 
     def test_the_target_moves_off_a_forgotten_device(self):
-        ferry.set_target("iphone")
-        ferry.decide("iphone", True)
-        self.assertEqual(ferry.target(ferry.devices(STATUS))["id"], "ipad")
+        bin_ferry.set_target("iphone")
+        bin_ferry.decide("iphone", True)
+        self.assertEqual(bin_ferry.target(bin_ferry.devices(STATUS))["id"], "ipad")
 
     def test_forgetting_a_phone_drops_its_subscriptions(self):
         self.subscribe("https://p/old", "iphone", direct=False)
         self.subscribe("https://p/app", "iphone")
         self.subscribe("https://p/ipad", "ipad")
-        ferry.decide("iphone", True)
+        bin_ferry.decide("iphone", True)
         self.assertEqual(self.endpoints(), ["https://p/ipad"])
 
     def test_a_forgotten_phone_subscribes_in_vain(self):
-        ferry.decide("iphone", True)
+        bin_ferry.decide("iphone", True)
         self.assertTrue(self.subscribe("https://p/app", "iphone"))   # answered 200 all the same
         self.assertEqual(self.endpoints(), [])
 
     def test_brought_back_it_subscribes_again(self):
-        ferry.decide("iphone", True, now=lambda: 1.0)
-        ferry.decide("iphone", False, now=lambda: 2.0)
+        bin_ferry.decide("iphone", True, now=lambda: 1.0)
+        bin_ferry.decide("iphone", False, now=lambda: 2.0)
         self.subscribe("https://p/app", "iphone")
         self.assertEqual(self.endpoints(), ["https://p/app"])
 
     def test_a_forget_while_subscribing_wins(self):   # the check and the write are apart: the forget lands between
-        real = ferry.subscriptions
+        real = bin_ferry.subscriptions
 
         def racing(change=None):
             if change:
-                ferry.subscriptions = real
-                ferry.decide("iphone", True)
+                bin_ferry.subscriptions = real
+                bin_ferry.decide("iphone", True)
             return real(change)
-        ferry.subscriptions = racing
+        bin_ferry.subscriptions = racing
         try:
             self.subscribe("https://p/app", "iphone")
         finally:
-            ferry.subscriptions = real
+            bin_ferry.subscriptions = real
         self.assertEqual(self.endpoints(), [])
 
     def test_learning_from_another_computer(self):
         self.subscribe("https://p/app", "iphone")
-        self.assertTrue(ferry.learn_forgotten([entry("iphone", 50.0), entry("studio", 50.0)]))
-        self.assertEqual(ferry.forgotten_ids(), {"iphone", "studio"})
+        self.assertTrue(bin_ferry.learn_forgotten([entry("iphone", 50.0), entry("studio", 50.0)]))
+        self.assertEqual(bin_ferry.forgotten_ids(), {"iphone", "studio"})
         self.assertEqual(self.endpoints(), [])   # learnt elsewhere, the subscriptions go here too
-        self.assertFalse(ferry.learn_forgotten([entry("iphone", 10.0, False)]))   # older: nothing new
-        self.assertEqual(ferry.forgotten_ids(), {"iphone", "studio"})
+        self.assertFalse(bin_ferry.learn_forgotten([entry("iphone", 10.0, False)]))   # older: nothing new
+        self.assertEqual(bin_ferry.forgotten_ids(), {"iphone", "studio"})
 
     def test_learning_nothing_new_writes_nothing(self):
-        ferry.learn_forgotten([entry("studio", 50.0)])
+        bin_ferry.learn_forgotten([entry("studio", 50.0)])
         before = os.stat(os.path.join(self.tmp.name, "forgotten.json")).st_mtime_ns
         self.hooks.clear()
-        self.assertFalse(ferry.learn_forgotten([entry("studio", 50.0)]))
+        self.assertFalse(bin_ferry.learn_forgotten([entry("studio", 50.0)]))
         self.assertEqual(os.stat(os.path.join(self.tmp.name, "forgotten.json")).st_mtime_ns, before)
         self.assertEqual(self.hooks, [])
 
     def test_a_forgotten_phone_that_asks_comes_back(self):   # api/unforget {"self": true}: added again
-        ferry.decide("iphone", True, now=lambda: 1.0)
-        ferry.bring_back("iphone")
-        self.assertEqual(ferry.forgotten_ids(), set())
-        self.assertIn("iphone", [d["id"] for d in ferry.devices(STATUS)])
+        bin_ferry.decide("iphone", True, now=lambda: 1.0)
+        bin_ferry.bring_back("iphone")
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
+        self.assertIn("iphone", [d["id"] for d in bin_ferry.devices(STATUS)])
 
     def test_one_not_forgotten_that_asks_changes_nothing(self):   # no entry for a device never forgotten
-        ferry.bring_back("ipad")
-        ferry.bring_back("your phone")
-        self.assertEqual(ferry.forgotten(), [])
+        bin_ferry.bring_back("ipad")
+        bin_ferry.bring_back("your phone")
+        self.assertEqual(bin_ferry.forgotten(), [])
         self.assertFalse(os.path.exists(os.path.join(self.tmp.name, "forgotten.json")))
 
     def test_a_name_is_a_name_however_it_is_written(self):   # Tailscale's names are lowercase
-        ferry.decide("Studio", True)
-        self.assertEqual(ferry.forgotten_ids(), {"studio"})
+        bin_ferry.decide("Studio", True)
+        self.assertEqual(bin_ferry.forgotten_ids(), {"studio"})
 
     def test_device_names(self):
         for good in ("iphone", "nightdrive-pc", "a" * 63, "MacBook-Pro-2"):
-            self.assertTrue(ferry.device_name(good), good)
+            self.assertTrue(bin_ferry.device_name(good), good)
         for bad in ("", "a" * 64, "mac.tail0.ts.net", "../x", "x y", None, 5):
-            self.assertFalse(ferry.device_name(bad), bad)
+            self.assertFalse(bin_ferry.device_name(bad), bad)
 
 
 class OneDirectSubscription(unittest.TestCase):   # 1644: an app installed again leaves its old address behind
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.state, ferry.STATE = ferry.STATE, self.tmp.name
+        self.state, config.STATE = config.STATE, self.tmp.name
 
     def tearDown(self):
-        ferry.STATE = self.state
+        config.STATE = self.state
         self.tmp.cleanup()
 
     def subscribe(self, endpoint, device, direct=True):
         sub = {"endpoint": endpoint, "keys": {"p256dh": "k", "auth": "a"}, "direct": direct}
-        ferry.subscribe(ferry.subscription(sub, device))
+        bin_ferry.subscribe(bin_ferry.subscription(sub, device))
 
     def test_a_new_direct_one_replaces_the_devices_old_one(self):
         self.subscribe("https://relay/1", "iphone")
         self.subscribe("https://web/pwa", "iphone", direct=False)
         self.subscribe("https://relay/ipad", "ipad")
         self.subscribe("https://relay/2", "iphone")
-        self.assertEqual([s["endpoint"] for s in ferry.subscriptions()],
+        self.assertEqual([s["endpoint"] for s in bin_ferry.subscriptions()],
                          ["https://web/pwa", "https://relay/ipad", "https://relay/2"])
 
     def test_the_same_endpoint_again_replaces_it(self):
         self.subscribe("https://relay/1", "iphone")
         self.subscribe("https://relay/1", "iphone")
-        self.assertEqual(len(ferry.subscriptions()), 1)
+        self.assertEqual(len(bin_ferry.subscriptions()), 1)
 
     def test_a_page_replaces_no_direct_one(self):
         self.subscribe("https://relay/1", "iphone")
         self.subscribe("https://web/pwa", "iphone", direct=False)
-        self.assertEqual(len(ferry.subscriptions()), 2)
+        self.assertEqual(len(bin_ferry.subscriptions()), 2)
 
     def test_an_unnamed_device_replaces_nothing(self):   # "your phone" could be anyone's
         self.subscribe("https://relay/1", "your phone")
         self.subscribe("https://relay/2", "your phone")
-        self.assertEqual(len(ferry.subscriptions()), 2)
+        self.assertEqual(len(bin_ferry.subscriptions()), 2)
 
 
 class Found(unittest.TestCase):
@@ -220,18 +220,18 @@ class Found(unittest.TestCase):
 
         def probe(host):
             j = answers[host]
-            return ferry.pinged(host, "https://" + host + "/ferry/", j)
+            return bin_ferry.pinged(host, "https://" + host + "/ferry/", j)
         r = probe("studio.tail0.ts.net")
         self.assertEqual(r["forgotten"], [entry("iphone", 1.0)])
         self.assertEqual((r["id"], r["name"], r["idle"]), ("studio", "Studio", 5))
 
     def test_a_ping_without_a_list(self):   # an older Ferry
-        r = ferry.pinged("old.tail0.ts.net", "https://old.tail0.ts.net/ferry/", {"computer": "Old"})
+        r = bin_ferry.pinged("old.tail0.ts.net", "https://old.tail0.ts.net/ferry/", {"computer": "Old"})
         self.assertEqual(r["forgotten"], [])
 
 
 class Tailnet:
-    """ferry.Tailnet as the handler and Ferry.machines() use it, without Tailscale: the owner on nightdrive, an iPhone
+    """bin_ferry.Tailnet as the handler and Ferry.machines() use it, without Tailscale: the owner on nightdrive, an iPhone
     and an iPad asking, the computer studio online."""
     def __init__(self):
         self.me = "nightdrive.tail0.ts.net"
@@ -264,24 +264,24 @@ class App(unittest.TestCase):
         self.state = tmp.name
         for name, value in (("STATE", tmp.name), ("changed", lambda: None), ("alias", lambda: "Nightdrive"),
                             ("idle_for", lambda: 0), ("url", lambda st=None: "https://nightdrive.tail0.ts.net/ferry/")):
-            p = mock.patch.object(ferry, name, value)
+            p = mock.patch.object(owner(name), name, value)
             p.start()
             self.addCleanup(p.stop)
-        self.app = ferry.Ferry.__new__(ferry.Ferry)
+        self.app = bin_ferry.Ferry.__new__(bin_ferry.Ferry)
         self.app.tailnet = Tailnet()
         self.app.key = None
         self.app.lock = threading.Lock()
         self.app.used = None
         self.app.back = False
         self.answers = {}   # host: its api/ping
-        self.app.found = ferry.Found(probe=lambda h: ferry.pinged(h, f"https://{h}/ferry/", self.answers[h])
+        self.app.found = bin_ferry.Found(probe=lambda h: bin_ferry.pinged(h, f"https://{h}/ferry/", self.answers[h])
                                      if h in self.answers else None)
 
     def listed(self):
         st = {"Self": {"UserID": 1, "DNSName": "nightdrive.tail0.ts.net."},
               "Peer": {"p": {"DNSName": "iphone.tail0.ts.net.", "OS": "iOS", "UserID": 1, "Online": True},
                        "t": {"DNSName": "ipad.tail0.ts.net.", "OS": "iOS", "UserID": 1, "Online": True}}}
-        return [d["id"] for d in ferry.devices(st)]
+        return [d["id"] for d in bin_ferry.devices(st)]
 
 
 class Api(App):
@@ -290,7 +290,7 @@ class Api(App):
         out = mock.patch.object(sys, "stdout", io.StringIO())   # the journal's line for every request
         out.start()
         self.addCleanup(out.stop)
-        self.server = ferry.Server(("127.0.0.1", 0), ferry.handler(self.app))
+        self.server = bin_ferry.Server(("127.0.0.1", 0), bin_ferry.handler(self.app))
         threading.Thread(target=self.server.serve_forever, daemon=True).start()
         self.addCleanup(self.server.server_close)
         self.addCleanup(self.server.shutdown)
@@ -320,7 +320,7 @@ class Api(App):
     def test_a_poll_writes_nothing(self):   # a page asks every few seconds
         self.call("api/ping")
         before = os.stat(os.path.join(self.state, "phones.json")).st_mtime_ns
-        with mock.patch.object(ferry, "phones", side_effect=AssertionError("written again")):
+        with mock.patch.object(bin_ferry, "phones", side_effect=AssertionError("written again")):
             self.assertEqual(self.call("api/ping")[0], 200)
         self.assertEqual(os.stat(os.path.join(self.state, "phones.json")).st_mtime_ns, before)
 
@@ -340,22 +340,22 @@ class Api(App):
 
     def test_unforget_self_brings_the_asking_phone_back(self):
         self.call("api/ping")
-        ferry.decide("iphone", True)
+        bin_ferry.decide("iphone", True)
         self.assertEqual(self.listed(), [])
         self.assertEqual(self.call("api/unforget", {"self": True}), (200, {"ok": True}))
-        self.assertEqual(ferry.forgotten_ids(), set())
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
         self.assertEqual(self.listed(), ["iphone"])
 
     def test_unforget_self_of_one_not_forgotten_adds_nothing(self):
-        ferry.decide("studio", True)
+        bin_ferry.decide("studio", True)
         self.assertEqual(self.call("api/unforget", {"self": True}, ip="100.64.0.3"), (200, {"ok": True}))
         self.assertEqual(self.call("api/unforget", {"self": True}, ip="100.64.0.9"), (200, {"ok": True}))   # unnamed
-        self.assertEqual([e["device"] for e in ferry.forgotten()], ["studio"])
+        self.assertEqual([e["device"] for e in bin_ferry.forgotten()], ["studio"])
 
     def test_unforget_of_a_device_still_works(self):
-        ferry.decide("studio", True)
+        bin_ferry.decide("studio", True)
         self.assertEqual(self.call("api/unforget", {"device": "studio"}), (200, {"ok": True}))
-        self.assertEqual(ferry.forgotten_ids(), set())
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
         self.assertEqual(self.call("api/unforget", {"self": False})[0], 400)
         self.assertEqual(self.call("api/unforget", {"self": "yes"})[0], 400)
         self.assertEqual(self.call("api/forget", {"self": True})[0], 400)   # nothing forgets itself
@@ -363,81 +363,81 @@ class Api(App):
 
 class ComingBack(App):   # docs/protocol.md › What forgetting does: a computer's Ferry starting brings it back
     def test_forgotten_before_it_started(self):
-        ferry.decide("nightdrive", True, now=lambda: 10.0)
-        self.answers["studio.tail0.ts.net"] = {"computer": "Studio", "forgotten": ferry.forgotten()}
+        bin_ferry.decide("nightdrive", True, now=lambda: 10.0)
+        self.answers["studio.tail0.ts.net"] = {"computer": "Studio", "forgotten": bin_ferry.forgotten()}
         self.app.machines()
-        self.assertEqual(ferry.forgotten_ids(), set())
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
 
     def test_forgotten_while_it_was_off(self):   # learned from the others in the first round, then undone
         self.answers["studio.tail0.ts.net"] = {"computer": "Studio", "forgotten": [entry("nightdrive", 5000.0)]}
         self.app.machines()
-        self.assertEqual(ferry.forgotten_ids(), set())
-        self.assertGreater(ferry.forgotten()[0]["time"], 5000.0)   # so it wins on the others too
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
+        self.assertGreater(bin_ferry.forgotten()[0]["time"], 5000.0)   # so it wins on the others too
 
     def test_no_other_computer_answers(self):
-        ferry.decide("nightdrive", True)
+        bin_ferry.decide("nightdrive", True)
         self.app.machines()
-        self.assertEqual(ferry.forgotten_ids(), set())
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
 
     def test_a_forget_after_the_start_holds(self):
         self.app.machines()
-        ferry.decide("nightdrive", True)
+        bin_ferry.decide("nightdrive", True)
         self.app.machines()
-        self.assertEqual(ferry.forgotten_ids(), {"nightdrive"})
+        self.assertEqual(bin_ferry.forgotten_ids(), {"nightdrive"})
 
     def test_not_before_it_knows_its_name(self):   # Tailscale not up yet: nobody was asked
         self.app.tailnet.me = ""
-        ferry.decide("nightdrive", True)
+        bin_ferry.decide("nightdrive", True)
         self.app.machines()
-        self.assertEqual(ferry.forgotten_ids(), {"nightdrive"})
+        self.assertEqual(bin_ferry.forgotten_ids(), {"nightdrive"})
         self.app.tailnet.me = "nightdrive.tail0.ts.net"
         self.app.machines()
-        self.assertEqual(ferry.forgotten_ids(), set())
+        self.assertEqual(bin_ferry.forgotten_ids(), set())
 
     def test_others_stay_forgotten(self):
-        ferry.decide("studio", True)
+        bin_ferry.decide("studio", True)
         self.app.machines()
-        self.assertEqual(ferry.forgotten_ids(), {"studio"})
+        self.assertEqual(bin_ferry.forgotten_ids(), {"studio"})
 
 
 class Commands(App):   # Forget is final: nothing but adding a device again brings it back
     def run_ferry(self, *args):
         out, err = io.StringIO(), io.StringIO()
-        with mock.patch.object(sys, "argv", ["ferry", *args]), mock.patch.object(ferry, "migrate", lambda: False), \
-                mock.patch.object(ferry, "tailscale_status", lambda: STATUS), \
+        with mock.patch.object(sys, "argv", ["ferry", *args]), mock.patch.object(bin_ferry, "migrate", lambda: False), \
+                mock.patch.object(bin_ferry, "tailscale_status", lambda: STATUS), \
                 mock.patch.object(sys, "stdout", out), mock.patch.object(sys, "stderr", err):
-            return ferry.main(), out.getvalue(), err.getvalue()
+            return bin_ferry.main(), out.getvalue(), err.getvalue()
 
     def test_no_unforget_command(self):
-        ferry.decide("studio", True)
+        bin_ferry.decide("studio", True)
         code, _, err = self.run_ferry("unforget", "studio")
         self.assertEqual(code, 1)
         self.assertIn("ferry forget DEVICE", err)   # the usage
         self.assertNotIn("unforget", err)
-        self.assertEqual(ferry.forgotten_ids(), {"studio"})
+        self.assertEqual(bin_ferry.forgotten_ids(), {"studio"})
 
     def test_forget(self):
         with open(os.path.join(self.state, "machines.json"), "w") as f:
             json.dump([{"id": "studio", "name": "Studio", "url": "https://studio/ferry/"}], f)
         self.assertEqual(self.run_ferry("forget", "Studio")[0], 0)
-        self.assertEqual(ferry.forgotten_ids(), {"studio"})
+        self.assertEqual(bin_ferry.forgotten_ids(), {"studio"})
         self.assertEqual(self.run_ferry("forget", "Studio")[0], 1)   # not listed any more
 
     def test_devices_doesnt_list_the_forgotten(self):
-        ferry.phones("iphone")
-        ferry.decide("iphone", True)
+        bin_ferry.phones("iphone")
+        bin_ferry.decide("iphone", True)
         code, out, _ = self.run_ferry("devices")
         self.assertEqual(code, 0)
         self.assertNotIn("iphone", out)
 
     def test_the_listing_has_no_forgotten(self):   # what Nightdrive's menu reads
-        ferry.phones("iphone")
-        ferry.phones("ipad")
-        ferry.decide("iphone", True)
-        with mock.patch.object(ferry, "tailscale_status", lambda: STATUS), \
-                mock.patch.object(ferry, "systemctl", lambda *a: mock.Mock(returncode=0)), \
-                mock.patch.object(ferry, "serving", lambda: True), mock.patch.object(ferry, "available_update", lambda: None):
-            d = ferry.listing()
+        bin_ferry.phones("iphone")
+        bin_ferry.phones("ipad")
+        bin_ferry.decide("iphone", True)
+        with mock.patch.object(bin_ferry, "tailscale_status", lambda: STATUS), \
+                mock.patch.object(bin_ferry, "systemctl", lambda *a: mock.Mock(returncode=0)), \
+                mock.patch.object(bin_ferry, "serving", lambda: True), mock.patch.object(bin_ferry, "available_update", lambda: None):
+            d = bin_ferry.listing()
         self.assertEqual([x["id"] for x in d["devices"]], ["ipad"])
         self.assertNotIn("forgotten", d)
 

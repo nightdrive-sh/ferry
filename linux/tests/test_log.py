@@ -7,12 +7,12 @@ import contextlib
 import io
 import unittest
 
-from load import ferry
+from load import bin_ferry
 
 
 class RequestLines(unittest.TestCase):
     def logged(self, fmt, *args):
-        cls = ferry.handler(None)
+        cls = bin_ferry.handler(None)
         h = cls.__new__(cls)
         h.headers = None
         out = io.StringIO()

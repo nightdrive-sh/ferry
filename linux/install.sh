@@ -154,7 +154,7 @@ fetch() {
   mkdir "$dest/ferry"
   if [[ -d $from ]]; then
     say "Installing Ferry from $from"
-    cp -RL "$from/bin" "$from/web" "$from/systemd" "$from/app" "$dest/ferry/"
+    cp -RL "$from/bin" "$from/ferry" "$from/web" "$from/systemd" "$from/app" "$dest/ferry/"
   else
     if [[ -n $from ]]; then
       [[ -f $from ]] || fail "no such file: $from"
