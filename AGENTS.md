@@ -46,8 +46,9 @@ installs Ferry from here.
   installs a release (or `--from linux`) into `~/.local/lib/ferry` and runs `ferry enable`. A desktop's own menu reads
   `ferry list --json` and hears of changes through `~/.config/ferry/hook`.
 - `linux/app/`: the Linux app, the Mac popover's content as a GTK 4 window (`ferry app`, PyGObject, no libadwaita), in
-  Ferry's own colours and JetBrains Mono. `ferry_app.py` imports the `ferry` package's modules and only draws and runs
-  things off the main loop: what it shows and does (setup steps `setup_step()`, sending `deliver()`, updates
+  Ferry's own colours and JetBrains Mono. `ferry_app.py` (the app), `window.py` (with `pages.py` and `actions.py` as its
+  mixins), `widgets.py` and `tray.py` import the `ferry` package's modules and only draw and run things off the main
+  loop: what it shows and does (setup steps `setup_step()`, sending `deliver()`, updates
   `check_update()`) is the server's, so `ferry list --json` says the same. `look.py` is what needs no GTK (the palette
   from `ios/Shared/Colors.xcassets`, the style sheet, Lucide icons, the words), tested on the Mac. The tray icon is a
   StatusNotifierItem with a dbusmenu, over Gio's D-Bus (GTK 4 has no tray), registered where a
