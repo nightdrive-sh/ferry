@@ -14,7 +14,7 @@ import urllib.error
 import urllib.request
 from unittest import mock
 
-from load import bin_ferry, config, desktop, forget, owner, push, tailnet
+from load import bin_ferry, computers, config, desktop, forget, owner, push, tailnet
 from test_devices import STATUS
 
 
@@ -84,14 +84,14 @@ class State(unittest.TestCase):
     def test_forget_leaves_the_device_lists(self):
         forget.decide("studio", True)
         forget.decide("iphone", True)
-        self.assertEqual([d["id"] for d in bin_ferry.devices(STATUS)], ["nightdrive-pc", "ipad"])
+        self.assertEqual([d["id"] for d in computers.devices(STATUS)], ["nightdrive-pc", "ipad"])
         self.assertEqual(forget.forgotten_ids(), {"studio", "iphone"})
         self.assertTrue(self.hooks)   # the desktop's menu hears of it
 
     def test_unforget_brings_it_back_and_keeps_the_entry(self):   # api/unforget {"device"}: a computer added again
         forget.decide("studio", True, now=lambda: 100.0)
         forget.decide("studio", False, now=lambda: 200.0)
-        self.assertIn("studio", [d["id"] for d in bin_ferry.devices(STATUS)])
+        self.assertIn("studio", [d["id"] for d in computers.devices(STATUS)])
         self.assertEqual(forget.forgotten(), [entry("studio", 200.0, False)])
 
     def test_a_decision_here_beats_what_is_known_here(self):   # another computer's clock may be ahead of this one's
@@ -101,9 +101,9 @@ class State(unittest.TestCase):
         self.assertGreater(forget.forgotten()[0]["time"], 5000.0)
 
     def test_the_target_moves_off_a_forgotten_device(self):
-        bin_ferry.set_target("iphone")
+        computers.set_target("iphone")
         forget.decide("iphone", True)
-        self.assertEqual(bin_ferry.target(bin_ferry.devices(STATUS))["id"], "ipad")
+        self.assertEqual(computers.target(computers.devices(STATUS))["id"], "ipad")
 
     def test_forgetting_a_phone_drops_its_subscriptions(self):
         self.subscribe("https://p/old", "iphone", direct=False)
@@ -158,7 +158,7 @@ class State(unittest.TestCase):
         forget.decide("iphone", True, now=lambda: 1.0)
         forget.bring_back("iphone")
         self.assertEqual(forget.forgotten_ids(), set())
-        self.assertIn("iphone", [d["id"] for d in bin_ferry.devices(STATUS)])
+        self.assertIn("iphone", [d["id"] for d in computers.devices(STATUS)])
 
     def test_one_not_forgotten_that_asks_changes_nothing(self):   # no entry for a device never forgotten
         forget.bring_back("ipad")
@@ -220,13 +220,13 @@ class Found(unittest.TestCase):
 
         def probe(host):
             j = answers[host]
-            return bin_ferry.pinged(host, "https://" + host + "/ferry/", j)
+            return computers.pinged(host, "https://" + host + "/ferry/", j)
         r = probe("studio.tail0.ts.net")
         self.assertEqual(r["forgotten"], [entry("iphone", 1.0)])
         self.assertEqual((r["id"], r["name"], r["idle"]), ("studio", "Studio", 5))
 
     def test_a_ping_without_a_list(self):   # an older Ferry
-        r = bin_ferry.pinged("old.tail0.ts.net", "https://old.tail0.ts.net/ferry/", {"computer": "Old"})
+        r = computers.pinged("old.tail0.ts.net", "https://old.tail0.ts.net/ferry/", {"computer": "Old"})
         self.assertEqual(r["forgotten"], [])
 
 
@@ -274,14 +274,14 @@ class App(unittest.TestCase):
         self.app.used = None
         self.app.back = False
         self.answers = {}   # host: its api/ping
-        self.app.found = bin_ferry.Found(probe=lambda h: bin_ferry.pinged(h, f"https://{h}/ferry/", self.answers[h])
+        self.app.found = computers.Found(probe=lambda h: computers.pinged(h, f"https://{h}/ferry/", self.answers[h])
                                      if h in self.answers else None)
 
     def listed(self):
         st = {"Self": {"UserID": 1, "DNSName": "nightdrive.tail0.ts.net."},
               "Peer": {"p": {"DNSName": "iphone.tail0.ts.net.", "OS": "iOS", "UserID": 1, "Online": True},
                        "t": {"DNSName": "ipad.tail0.ts.net.", "OS": "iOS", "UserID": 1, "Online": True}}}
-        return [d["id"] for d in bin_ferry.devices(st)]
+        return [d["id"] for d in computers.devices(st)]
 
 
 class Api(App):

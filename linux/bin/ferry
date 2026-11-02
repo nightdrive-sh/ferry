@@ -88,76 +88,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 # The package beside bin/: ~/.local/bin/ferry is a link to bin/ferry, so the real path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(__file__))))
-from ferry import config, desktop, forget, idle, notices, push, store, tailnet  # noqa: E402
-
-
-def probe(host):
-    """Ferry on one of the owner's machines: its address, name, tailnet name (id), seconds idle and forgotten devices, or
-    None (not running, asleep)."""
-    u = f"https://{host}{'' if config.HTTPS_PORT == 443 else f':{config.HTTPS_PORT}'}{config.MOUNT}/"
-    try:
-        req = urllib.request.Request(u + "api/ping", headers={"X-Ferry": "1"})
-        return pinged(host, u, json.loads(urllib.request.urlopen(req, timeout=4).read()))
-    except (OSError, ValueError, AttributeError):
-        return None
-
-
-def pinged(host, u, j):
-    """probe()'s answer from a computer's api/ping: with its list of forgotten devices, to merge into this one's."""
-    return {"url": u, "name": j.get("computer") or host.split(".")[0], "id": host.split(".")[0], "idle": j.get("idle"),
-            "forgotten": j.get("forgotten") if isinstance(j.get("forgotten"), list) else []}
-
-
-def known_machines(change=None):
-    """The owner's computers that answered as Ferry ({id, name, url, idle, seen}), kept by the server for the commands
-    and the menu; one that stops answering stays, asleep, while Tailscale still lists it."""
-    path = os.path.join(config.STATE, "machines.json")
-    try:
-        with open(path) as f:
-            out = json.load(f)
-    except (OSError, ValueError):
-        out = []
-    if change:
-        change(out)
-        os.makedirs(config.STATE, mode=0o700, exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w") as f:
-            json.dump(out, f, ensure_ascii=False)
-        os.replace(tmp, path)
-    return out
-
-
-class Found:
-    """The owner's other machines running Ferry, from the ones Tailscale has online. A machine is asked whether it runs
-    Ferry when it comes online, again after a minute, and after 10 s if it didn't answer as Ferry (it may have come
-    online before its Ferry started). One that goes offline leaves the list at once, and nothing is sent to it: a phone
-    asks for this list every 10 s while one of its computers sleeps, instead of trying the sleeping one itself, which
-    jammed the phone's Tailscale."""
-    AGAIN, MISSED_AGAIN = 60, 10
-
-    def __init__(self, probe=probe, clock=time.monotonic):
-        self.probe, self.clock = probe, clock
-        self.probed = {}    # host: (when, probe()'s answer or None)
-        self.asked = []     # the hosts the last get() asked: only then is there news for known_machines
-
-    def get(self, online):
-        now = self.clock()
-        due = [h for h in online if h not in self.probed
-               or now - self.probed[h][0] > (self.AGAIN if self.probed[h][1] else self.MISSED_AGAIN)]
-        self.asked = due
-        results = [None] * len(due)
-
-        def one(i, h):
-            results[i] = self.probe(h)
-        threads = [threading.Thread(target=one, args=(i, h), daemon=True) for i, h in enumerate(due)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join(6)
-        probed = {h: v for h, v in self.probed.items() if h in online}
-        probed.update((h, (now, r)) for h, r in zip(due, results))
-        self.probed = probed
-        return sorted((r for _, r in probed.values() if r), key=lambda r: r["name"].lower())
+from ferry import computers, config, desktop, forget, idle, notices, push, store, tailnet, terminal  # noqa: E402
 
 
 STATIC = {"/manifest.webmanifest": "application/manifest+json", "/sw.js": "text/javascript",
@@ -172,7 +103,7 @@ class Ferry:
         self.recent = (0.0, None)        # (when, its group): files from the phone in a row, in one notification
         self.lock = threading.Lock()
         self.notifying = threading.Lock()   # one files' notification at a time: each needs the id of the one before
-        self.found = Found()             # the owner's other machines running Ferry
+        self.found = computers.Found()             # the owner's other machines running Ferry
         self.used = None                 # phones(), read once: a poll from a phone known already writes nothing
         self.back = False                # whether this computer brought itself back since its Ferry started
 
@@ -188,7 +119,7 @@ class Ferry:
             def merge(known):
                 known[:] = [k for k in known if k.get("id") not in ids and k.get("id") in self.tailnet.ids] + \
                            [dict({k: v for k, v in r.items() if k != "forgotten"}, seen=now) for r in found]
-            known_machines(merge)
+            computers.known_machines(merge)
             forget.learn_forgotten([e for r in found for e in r["forgotten"]])
         self.come_back()
         gone = forget.forgotten_ids()
@@ -859,142 +790,19 @@ def set_tray(on):
             os.remove(path)
 
 
-def devices(st=None):
-    """The owner's other devices, computers first, without the ones the owner forgot: {id (the short tailnet name),
-    name, kind (computer, phone, tablet), online, inUse (a computer in use when last asked)}. Computers are the ones the
-    server found running Ferry (machines.json), asleep while Tailscale says they're offline; phones and tablets are
-    Tailscale's that have used Ferry here (docs/protocol.md › Forgetting a device)."""
-    st = st or tailnet.tailscale_status()
-    gone = forget.forgotten_ids()
-    me = st.get("Self") or {}
-    uid = me.get("UserID")
-    peers = {(p.get("DNSName") or "").split(".")[0]: p for p in (st.get("Peer") or {}).values()
-             if p.get("UserID") == uid and p.get("DNSName")}
-    out = []
-    for m in sorted(known_machines(), key=lambda m: m.get("name", "").lower()):
-        p = peers.get(m.get("id"))
-        if not p or p.get("OS") in ("iOS", "android") or m["id"] in gone:
-            continue
-        online = bool(p.get("Online"))
-        out.append({"id": m["id"], "name": m.get("name") or m["id"], "kind": "computer", "online": online,
-                    "inUse": online and m.get("idle") == 0})
-    # A phone with a push subscription has used Ferry, also one that did before phones.json was kept (an update)
-    used = forget.phones() | {s.get("device") for s in push.subscriptions()}
-    for pid, p in sorted(peers.items()):
-        if p.get("OS") in ("iOS", "android") and pid in used and pid not in gone:
-            tablet = "ipad" in (pid + (p.get("HostName") or "")).lower() or "tablet" in pid.lower()
-            out.append({"id": pid, "name": pid, "kind": "tablet" if tablet else "phone", "online": bool(p.get("Online")),
-                        "inUse": False})
-    return out
-
-
-def target(devs=None):
-    """The device sends go to: the one picked last (STATE/target) while it's still one of the owner's devices, else a
-    phone (one online first), else another computer; None when there's no other device."""
-    devs = devices() if devs is None else devs
-    try:
-        with open(os.path.join(config.STATE, "target")) as f:
-            picked = f.read().strip()
-    except OSError:
-        picked = ""
-    by_id = {d["id"]: d for d in devs}
-    if picked in by_id:
-        return by_id[picked]
-    phones = [d for d in devs if d["kind"] != "computer"]
-    return (sorted(phones, key=lambda d: not d["online"]) or devs or [None])[0]
-
-
-def set_target(device_id):
-    os.makedirs(config.STATE, mode=0o700, exist_ok=True)
-    with open(os.path.join(config.STATE, "target"), "w") as f:
-        f.write(device_id + "\n")
-
-
-def mark_sent(what, to, error=""):
-    """What was just sent and to whom, for the menu's "Sent" (it shows the newest for a few seconds), or why a send
-    didn't go (error), so the menu's button stops waiting."""
-    os.makedirs(config.STATE, mode=0o700, exist_ok=True)
-    tmp = os.path.join(config.STATE, "sent.json.tmp")
-    with open(tmp, "w") as f:
-        json.dump(dict({"time": time.time(), "what": what, "to": to}, **({"error": error} if error else {})), f,
-                  ensure_ascii=False)
-    os.replace(tmp, os.path.join(config.STATE, "sent.json"))
-    desktop.changed()
-
-
-def last_sent():
-    try:
-        with open(os.path.join(config.STATE, "sent.json")) as f:
-            d = json.load(f)
-    except (OSError, ValueError):
-        return None
-    return d if time.time() - d.get("time", 0) < config.SENT_SHOWN else None
-
-
-def machine_url(device_id):
-    m = next((k for k in known_machines() if k.get("id") == device_id), None)
-    return m.get("url", "") if m else ""
-
-
-def post(u, data, headers):
-    req = urllib.request.Request(u, data, method="POST", headers=dict({"X-Ferry": "1"}, **headers))
-    with urllib.request.urlopen(req, timeout=30) as r:
-        return r.read()
-
-
-def deliver(dev, files=None, text=None, clip=False):
-    """Sends files or a text to one device (from devices()): into the box for a phone, straight to another computer.
-    clip: it is the clipboard, which another computer puts on its own (a text, or an image file). Returns "" or why it
-    failed."""
-    if files is not None:
-        files = store.file_paths(files)
-        if not files:
-            return "No files to send there"
-        what = os.path.basename(files[0]) if len(files) == 1 else f"{len(files)} files"
-    else:
-        if not (text or "").strip():
-            return "Nothing to send"
-        what = oneline(text, 60)
-    if dev["kind"] != "computer":
-        if files is not None:
-            store.add_files(files, dev["id"])
-        else:
-            store.add_text(text, dev["id"])
-    else:
-        base = machine_url(dev["id"])
-        if not base:
-            return f"{dev['name']} isn't running Ferry"
-        try:
-            if files is None:
-                post(base + "api/text", json.dumps({"text": text[:config.MAX_TEXT], "clip": clip}, ensure_ascii=False).encode(),
-                     {"Content-Type": "application/json"})
-            for path in files or []:
-                kind = mimetypes.guess_type(path)[0] or "application/octet-stream"
-                q = urllib.parse.urlencode(dict({"name": os.path.basename(path), "type": kind},
-                                                **({"clip": "1"} if clip else {})))
-                with open(path, "rb") as f:
-                    post(base + "api/upload?" + q, f, {"Content-Type": "application/octet-stream",
-                                                       "Content-Length": str(os.path.getsize(path))})
-        except (OSError, ValueError) as e:
-            print(f"send to {base} failed: {e!r}", file=sys.stderr)
-            return f"{dev['name']} didn't answer: it's asleep, or Ferry is off there"
-    mark_sent(what, dev["name"])
-    return ""
-
-
 def listing():
     st = tailnet.tailscale_status()
     with store.box() as items:
         out = [dict(store.public(i), path=i.get("path", "")) for i in items]
     subs = push.subscriptions() if os.path.exists(os.path.join(config.STATE, "push.json")) else []
-    devs = devices(st)
-    t = target(devs)
+    devs = computers.devices(st)
+    t = computers.target(devs)
     on = tailnet.systemctl("is-active", "-q", config.SERVICE).returncode == 0
     have = bool(shutil.which("tailscale"))
     served = have and bool(st) and tailnet.serving()
     return {"on": on, "tailscale": st.get("BackendState") == "Running", "url": tailnet.url(st), "serving": served,
             "setup": tailnet.setup_step(st, have, on, served), "push": len(subs), "items": out, "devices": devs,
-            "target": t["id"] if t else "", "sent": last_sent(), "version": config.VERSION, "update": available_update()}
+            "target": t["id"] if t else "", "sent": computers.last_sent(), "version": config.VERSION, "update": available_update()}
 
 
 def add_link(u):
@@ -1015,130 +823,6 @@ def qr(svg):
                     add_link(u)], check=True)
     print(config.QR)
     return 0
-
-
-def ago(t):
-    s = time.time() - t
-    return "just now" if s < 60 else f"{s // 60:.0f} min ago" if s < 3600 else \
-        f"{s // 3600:.0f} h ago" if s < 86400 else f"{s // 86400:.0f} d ago"
-
-
-def fit(text, room):
-    return text if len(text) <= room else text[:room - 1] + "…"
-
-
-def oneline(text, room):
-    return fit(" ".join(text.split()), room)
-
-
-def print_list():
-    items = store.numbered()
-    if not items:
-        print("The box is empty")
-        return
-    width, pad, heading = shutil.get_terminal_size().columns, len(str(len(items))), ""
-    for n, it in enumerate(items, 1):
-        h = "Received" if it.get("to") == "computer" else "Sent, waiting to be picked up"
-        if h != heading:
-            print(("\n" if heading else "") + h)
-            heading = h
-        head = f"  {n:>{pad}}  {ago(it.get('time', 0)):<10}  "
-        who = f"  · {it['from']}" if it.get("from") else f"  · for {it['for']}" if it.get("for") else ""
-        room = max(width - len(head) - len(who), 20)
-        what = f"{it.get('name', '')}  {config.human(it.get('size', 0))}" if it.get("kind") == "file" else \
-            '"' + oneline(it.get("text", ""), room - 2) + '"'
-        print(head + fit(what, room) + who)
-    if any(i.get("to") == "computer" and not i.get("seen") for i in items):
-        store.mark_seen()
-        desktop.changed()
-
-
-def get(it):
-    """A text printed; a file copied to the current folder (its name printed, so `ferry get` works in a script too)."""
-    if it.get("kind") == "text":
-        text = it.get("text", "")
-        sys.stdout.write(text + ("\n" if sys.stdout.isatty() and not text.endswith("\n") else ""))
-    else:
-        here = os.path.join(os.getcwd(), store.safe_name(it.get("name", "file")))
-        if os.path.exists(here) and os.path.samefile(here, it["path"]):   # already here (Downloads)
-            dest = here
-        else:
-            dest = store.unique(here)
-            shutil.copy2(it["path"], dest)
-        print(os.path.relpath(dest))
-    if it.get("to") == "computer" and not it.get("seen"):
-        store.mark_seen({it["id"]})
-        desktop.changed()
-    store.copied(it)   # a code or a password printed is picked up (docs/protocol.md › Codes and passwords)
-    return 0
-
-
-def send(args, dev):
-    """Files when every argument is one, a text otherwise; with no arguments, what is piped in or the clipboard."""
-    if args in ([], ["-"]):
-        piped = args == ["-"] or not sys.stdin.isatty()
-        text = sys.stdin.read() if piped else desktop.paste_text()
-        if not text.strip():
-            print("Nothing to send: " + ("the input is empty" if piped else "the clipboard has no text"), file=sys.stderr)
-            return 1
-        err, what = deliver(dev, text=text), f'"{oneline(text, 60)}"'
-    elif any(os.path.exists(p) for p in args):
-        missing = [p for p in args if not os.path.exists(p)]
-        if missing:
-            print(f"No such file: {missing[0]} (to send a text with a file's name, pipe it in)", file=sys.stderr)
-            return 1
-        files = store.file_paths(args)
-        err = deliver(dev, files=args)
-        what = f"{os.path.basename(files[0]) if len(files) == 1 else f'{len(files)} files'}" + \
-            (f" ({config.human(sum(os.path.getsize(f) for f in files))})" if files else "")
-    else:
-        text = " ".join(args)
-        err, what = deliver(dev, text=text), f'"{oneline(text, 60)}"'
-    if err:
-        print(err, file=sys.stderr)
-        return 1
-    print(f"Sent {what} to {dev['name']}", flush=True)
-    st = tailnet.status()
-    if st != "on" and dev["kind"] != "computer":      # off, or off with why and what turns it on
-        print(f"Ferry is {st}, so {dev['name']} can't pick it up yet" + ("" if "(" in st else ": ferry enable"),
-              file=sys.stderr)
-    return 0
-
-
-def pick_device(args):
-    """--to DEVICE taken out of args: (the device, the rest, ""), or (None, args, why not)."""
-    want = ""
-    if "--to" in args:
-        i = args.index("--to")
-        if i + 1 >= len(args):
-            return None, args, "--to needs a device: see ferry devices"
-        want, args = args[i + 1], args[:i] + args[i + 2:]
-    devs = devices()
-    dev = next((d for d in devs if want in (d["id"], d["name"])), None) if want else target(devs)
-    if not dev:
-        return None, args, (f"No device {want}: see ferry devices" if want else
-                            "No other device yet: add your phone with Add Device in Ferry's menu (or ferry qr)")
-    return dev, args, ""
-
-
-def failed(err):
-    """A send from the menu or a drop that didn't go: nobody sees stderr there."""
-    notices.notify("Couldn't send", err)
-    mark_sent("", "", err)
-    print(err, file=sys.stderr)
-    return 1
-
-
-def pick_files(title):
-    """Files chosen in a dialog, several at once: zenity's (GNOME's and most desktops'), else kdialog's (KDE's); None
-    without either, [] when none was chosen."""
-    home = os.path.expanduser("~/")
-    for cmd in (["zenity", "--file-selection", "--multiple", "--separator=\n", f"--title={title}", f"--filename={home}"],
-                ["kdialog", "--title", title, "--getopenfilename", home, "--multiple", "--separate-output"]):
-        if shutil.which(cmd[0]):
-            res = subprocess.run(cmd, capture_output=True, text=True, env=desktop.desktop_env())
-            return [p for p in res.stdout.splitlines() if p]
-    return None
 
 
 def install_unit():
@@ -1269,47 +953,47 @@ def main():
     elif cmd == "list" and a[1:] == ["--json"]:
         print(json.dumps(listing(), ensure_ascii=False))
     elif cmd == "list":
-        print_list()
+        terminal.print_list()
     elif cmd in ("send", "add", "pick", "text", "send-clipboard"):
-        dev, rest, why = pick_device(a[1:])
+        dev, rest, why = terminal.pick_device(a[1:])
         if not dev:
             # A device named with --to that isn't there is that, not "no device yet"
             if cmd == "send":
                 print(why, file=sys.stderr)
                 return 1
-            return failed(why)
+            return terminal.failed(why)
         if cmd == "send":
-            return send(rest, dev)
+            return terminal.send(rest, dev)
         if cmd == "add":
             if not rest:
                 return 1
-            err = deliver(dev, files=rest)
-            return failed(err) if err else 0
+            err = computers.deliver(dev, files=rest)
+            return terminal.failed(err) if err else 0
         if cmd == "pick":
-            paths = pick_files(f"Send to {dev['name']} with Ferry")
+            paths = terminal.pick_files(f"Send to {dev['name']} with Ferry")
             if paths is None:
-                return failed("No file dialog here (zenity or kdialog): ferry send FILE sends files")
+                return terminal.failed("No file dialog here (zenity or kdialog): ferry send FILE sends files")
             if not paths:
                 return 1
-            err = deliver(dev, files=paths)
+            err = computers.deliver(dev, files=paths)
             # A menu that closed for the dialog may open again to show what was just sent
             desktop.hook("picked")
-            return failed(err) if err else 0
+            return terminal.failed(err) if err else 0
         if cmd == "text":
             if not " ".join(rest).strip():
                 return 1
-            err = deliver(dev, text=" ".join(rest))
-            return failed(err) if err else 0
+            err = computers.deliver(dev, text=" ".join(rest))
+            return terminal.failed(err) if err else 0
         text = desktop.paste_text()
         if not text.strip():
             notices.notify("The clipboard has no text", "Copy a text or a link first")
-            mark_sent("", "", "The clipboard has no text")
+            computers.mark_sent("", "", "The clipboard has no text")
             return 1
-        err = deliver(dev, text=text, clip=True)
-        return failed(err) if err else 0
+        err = computers.deliver(dev, text=text, clip=True)
+        return terminal.failed(err) if err else 0
     elif cmd == "devices":
-        devs = devices()
-        t = target(devs)
+        devs = computers.devices()
+        t = computers.target(devs)
         for d in devs:
             state = "in use" if d["inUse"] else "online" if d["online"] else \
                 "asleep" if d["kind"] == "computer" else "offline"
@@ -1318,28 +1002,28 @@ def main():
         if not devs:
             print("No other device yet: add your phone with Add Device in Ferry's menu (or ferry qr)", file=sys.stderr)
     elif cmd == "forget" and len(a) == 2:
-        dev = next((d for d in devices() if a[1] in (d["id"], d["name"])), None)
+        dev = next((d for d in computers.devices() if a[1] in (d["id"], d["name"])), None)
         if not dev:
             print(f"No device {a[1]}: see ferry devices", file=sys.stderr)
             return 1
         forget.decide(dev["id"], True)
     elif cmd == "target":
-        devs = devices()
+        devs = computers.devices()
         if len(a) == 1:
-            t = target(devs)
+            t = computers.target(devs)
             print(t["id"] if t else "")
             return 0 if t else 1
         dev = next((d for d in devs if a[1] in (d["id"], d["name"])), None)
         if not dev:
             print(f"No device {a[1]}: see ferry devices", file=sys.stderr)
             return 1
-        set_target(dev["id"])
+        computers.set_target(dev["id"])
     elif cmd == "get" and len(a) <= 2:
         it = store.item(a[1] if len(a) > 1 else "1")
         if not it or (len(a) == 1 and it.get("to") != "computer"):
             print("Nothing from the phone" if len(a) == 1 else f"No item {a[1]}: see ferry list", file=sys.stderr)
             return 1
-        return get(it)
+        return terminal.get(it)
     elif cmd in ("copy", "open", "rm", "remove") and len(a) > 1:
         items = store.numbered()
         found = [store.item(r, items) for r in a[1:]]   # all first: numbers would change as items go

@@ -6,7 +6,7 @@ import os
 import tempfile
 import unittest
 
-from load import bin_ferry, config, owner
+from load import bin_ferry, computers, config, owner
 
 
 class Launcher(unittest.TestCase):
@@ -88,26 +88,26 @@ class ClipboardImage(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         self.state, config.STATE = config.STATE, self.tmp.name
-        self.post, self.machine_url = bin_ferry.post, bin_ferry.machine_url
+        self.post, self.machine_url = computers.post, computers.machine_url
         self.posted = []
-        bin_ferry.post = lambda u, data, headers: self.posted.append(u)
-        bin_ferry.machine_url = lambda _id: "https://studio/ferry/"
+        computers.post = lambda u, data, headers: self.posted.append(u)
+        computers.machine_url = lambda _id: "https://studio/ferry/"
         self.png = os.path.join(self.tmp.name, "Clipboard.png")
         with open(self.png, "wb") as f:
             f.write(b"\x89PNG")
 
     def tearDown(self):
-        config.STATE, bin_ferry.post, bin_ferry.machine_url = self.state, self.post, self.machine_url
+        config.STATE, computers.post, computers.machine_url = self.state, self.post, self.machine_url
         self.tmp.cleanup()
 
     def test_clip_marks_the_upload(self):
         dev = {"id": "studio", "name": "Studio", "kind": "computer"}
-        self.assertEqual(bin_ferry.deliver(dev, files=[self.png], clip=True), "")
+        self.assertEqual(computers.deliver(dev, files=[self.png], clip=True), "")
         self.assertIn("clip=1", self.posted[0])
 
     def test_files_without_clip(self):
         dev = {"id": "studio", "name": "Studio", "kind": "computer"}
-        bin_ferry.deliver(dev, files=[self.png])
+        computers.deliver(dev, files=[self.png])
         self.assertNotIn("clip", self.posted[0])
 
 

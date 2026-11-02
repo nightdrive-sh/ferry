@@ -7,7 +7,7 @@ import os
 import tempfile
 import unittest
 
-from load import bin_ferry, config, forget, push, store
+from load import computers, config, forget, push, store, terminal
 
 
 def peer(name, os_, online=True, uid=1):
@@ -36,7 +36,7 @@ class Devices(unittest.TestCase):
         self.tmp.cleanup()
 
     def test_lists_ferry_computers_then_the_owners_phones(self):
-        d = bin_ferry.devices(STATUS)
+        d = computers.devices(STATUS)
         self.assertEqual([(x["id"], x["kind"], x["online"]) for x in d], [
             ("nightdrive-pc", "computer", True), ("studio", "computer", False),
             ("ipad", "tablet", False), ("iphone", "phone", True)])
@@ -44,28 +44,28 @@ class Devices(unittest.TestCase):
         self.assertEqual(d[0]["name"], "Nightdrive PC")
 
     def test_a_device_not_there_is_named_in_the_reason(self):   # not "no device yet" (ferry text --to x)
-        devices, bin_ferry.devices = bin_ferry.devices, lambda: devices(STATUS)
+        devices, computers.devices = computers.devices, lambda: devices(STATUS)
         try:
-            self.assertEqual(bin_ferry.pick_device(["--to", "toaster", "hi"]),
+            self.assertEqual(terminal.pick_device(["--to", "toaster", "hi"]),
                              (None, ["hi"], "No device toaster: see ferry devices"))
-            self.assertEqual(bin_ferry.pick_device(["--to"])[2], "--to needs a device: see ferry devices")
-            dev, rest, why = bin_ferry.pick_device(["--to", "iphone", "hi"])
+            self.assertEqual(terminal.pick_device(["--to"])[2], "--to needs a device: see ferry devices")
+            dev, rest, why = terminal.pick_device(["--to", "iphone", "hi"])
             self.assertEqual((dev["id"], rest, why), ("iphone", ["hi"], ""))
         finally:
-            bin_ferry.devices = devices
+            computers.devices = devices
 
     def test_a_phone_is_listed_once_it_has_used_ferry(self):   # docs/protocol.md › Forgetting a device
         os.remove(os.path.join(self.tmp.name, "phones.json"))
-        self.assertEqual([x["id"] for x in bin_ferry.devices(STATUS)], ["nightdrive-pc", "studio"])
+        self.assertEqual([x["id"] for x in computers.devices(STATUS)], ["nightdrive-pc", "studio"])
         forget.phones("ipad")
-        self.assertEqual([x["id"] for x in bin_ferry.devices(STATUS)], ["nightdrive-pc", "studio", "ipad"])
+        self.assertEqual([x["id"] for x in computers.devices(STATUS)], ["nightdrive-pc", "studio", "ipad"])
 
     def test_a_push_subscription_counts_as_having_used_it(self):   # an install from before phones.json
         os.remove(os.path.join(self.tmp.name, "phones.json"))
         with open(os.path.join(self.tmp.name, "push.json"), "w") as f:
             json.dump([{"endpoint": "https://p/1", "keys": {}, "device": "iphone"},
                        {"endpoint": "https://p/2", "keys": {}, "device": "your phone"}], f)
-        self.assertEqual([x["id"] for x in bin_ferry.devices(STATUS)], ["nightdrive-pc", "studio", "iphone"])
+        self.assertEqual([x["id"] for x in computers.devices(STATUS)], ["nightdrive-pc", "studio", "iphone"])
 
     def test_phones_json_keeps_names_only(self):   # a file edited by hand
         with open(os.path.join(self.tmp.name, "phones.json"), "w") as f:
@@ -76,22 +76,22 @@ class Devices(unittest.TestCase):
         self.assertEqual(forget.phones(), set())
 
     def test_target_defaults_to_a_phone_online(self):
-        self.assertEqual(bin_ferry.target(bin_ferry.devices(STATUS))["id"], "iphone")
+        self.assertEqual(computers.target(computers.devices(STATUS))["id"], "iphone")
 
     def test_target_is_the_one_picked(self):
-        bin_ferry.set_target("studio")
-        self.assertEqual(bin_ferry.target(bin_ferry.devices(STATUS))["id"], "studio")
+        computers.set_target("studio")
+        self.assertEqual(computers.target(computers.devices(STATUS))["id"], "studio")
 
     def test_a_picked_device_that_went_falls_back(self):
-        bin_ferry.set_target("gone")
-        self.assertEqual(bin_ferry.target(bin_ferry.devices(STATUS))["id"], "iphone")
+        computers.set_target("gone")
+        self.assertEqual(computers.target(computers.devices(STATUS))["id"], "iphone")
 
     def test_no_devices_no_target(self):
-        self.assertIsNone(bin_ferry.target([]))
+        self.assertIsNone(computers.target([]))
 
     def test_sent_shows_for_a_few_seconds(self):
-        bin_ferry.mark_sent("x.pdf", "iphone")
-        self.assertEqual(bin_ferry.last_sent()["to"], "iphone")
+        computers.mark_sent("x.pdf", "iphone")
+        self.assertEqual(computers.last_sent()["to"], "iphone")
 
 
 class ForDevice(unittest.TestCase):

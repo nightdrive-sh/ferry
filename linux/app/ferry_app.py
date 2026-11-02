@@ -27,7 +27,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import devices_page  # noqa: E402
 import look  # noqa: E402
-from ferry import config, desktop, notices, store, tailnet  # noqa: E402
+from ferry import computers, config, desktop, notices, store, tailnet  # noqa: E402
 
 core = None              # bin/ferry, as a module (main())
 REFRESH = 5              # seconds between looks at the box and the devices while the window shows
@@ -1061,7 +1061,7 @@ class Window(Gtk.ApplicationWindow):
         self.data["target"] = device["id"]
         self.send_state = ("idle",)
         self.render()
-        background(lambda: core.set_target(device["id"]))
+        background(lambda: computers.set_target(device["id"]))
 
     def compose(self):
         self.entry.set_text("")
@@ -1154,8 +1154,8 @@ class Window(Gtk.ApplicationWindow):
 
         def work():
             if kind == "text":
-                return core.deliver(device, text=payload, clip=clip)
-            return core.deliver(device, files=payload, clip=clip)
+                return computers.deliver(device, text=payload, clip=clip)
+            return computers.deliver(device, files=payload, clip=clip)
         background(work, lambda err: self.settle(("failed", err) if err else ("sent", device["name"])) if err is not None
                    else self.settle(("failed", "Ferry couldn't send that")))
 
@@ -1608,12 +1608,12 @@ class App(Gtk.Application):
             if not (text or "").strip():
                 notices.notify("The clipboard has no text", "Copy a text or a link first")
                 return
-            devs = core.devices()
-            dev = core.target(devs)
+            devs = computers.devices()
+            dev = computers.target(devs)
             if not dev:
                 notices.notify("Couldn't send", "No device to send to: add one with Add Device")
                 return
-            err = core.deliver(dev, text=text, clip=True)
+            err = computers.deliver(dev, text=text, clip=True)
             notices.notify("Couldn't send" if err else f"Sent to {dev['name']}", err or look.oneline(text)[:120])
         background(work)
 

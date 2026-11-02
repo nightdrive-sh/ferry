@@ -11,7 +11,7 @@ import time
 import unittest
 from unittest import mock
 
-from load import bin_ferry, config, owner, push, store, tailnet
+from load import bin_ferry, config, owner, push, store, tailnet, terminal
 
 # The vectors FerryKit's SecretTests runs too: one rule on every platform
 VECTORS = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "FerryKit", "Tests", "FerryKitTests",
@@ -170,7 +170,7 @@ class Box(unittest.TestCase):
         with store.box() as items:
             code = items[0]
         with mock.patch("sys.stdout", io.StringIO()) as out:
-            bin_ferry.get(code)
+            terminal.get(code)
         self.assertEqual(out.getvalue(), "801566")
         self.assertEqual(self.texts(), [])
 
