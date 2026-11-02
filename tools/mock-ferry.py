@@ -13,14 +13,13 @@ A third computer, Studio at http://127.0.0.1:47273/ferry/, is one just set up: a
 handshakes until it has the HTTPS certificate (about 37 s), Studio holds every request until --late seconds (default 40)
 after its first one. DELETE /mock/cert on its port makes it new again. It knows of no other computer, nor they of it.
 
-Notifications work as on a real computer, with bin/ferry's own payload(), encrypt() and vapid_auth() (FERRY_BIN, default
+Notifications work as on a real computer, with the Linux server's own payload(), encrypt() and vapid_auth() (FERRY_BIN, default
 this repo's linux/bin/ferry), when python3-cryptography is there. The app subscribes as usual (an http:// endpoint is
 accepted here, for the local relay), and a test leaves something for the phone with
 POST /mock/leave {"text": …} or {"file": "name.png"} on a computer's port. GET /mock/subs lists its subscriptions,
 DELETE /mock/subs forgets them.
 """
 import argparse
-import importlib.machinery
 import json
 import os
 import secrets
@@ -42,10 +41,12 @@ FERRY_BIN = os.path.expanduser(os.environ.get("FERRY_BIN") or
 
 
 def load_ferry():
-    """bin/ferry as a module, for its push code; None without python3-cryptography (then no notifications)."""
+    """The ferry package's push code, from beside FERRY_BIN; None without python3-cryptography (then no notifications)."""
     try:
         import cryptography  # noqa: F401
-        return importlib.machinery.SourceFileLoader("ferry", FERRY_BIN).load_module()
+        sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(FERRY_BIN))))
+        from ferry import push
+        return push
     except (ImportError, OSError) as e:
         print(f"no notifications: {e}", flush=True)
         return None

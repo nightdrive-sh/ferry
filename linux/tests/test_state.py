@@ -9,7 +9,7 @@ import tempfile
 import time
 import unittest
 
-from load import bin_ferry, config
+from load import bin_ferry, config, store
 
 
 class StateDir(unittest.TestCase):
@@ -91,7 +91,7 @@ class Migrate(unittest.TestCase):
         self.migrate()
         state, config.STATE = config.STATE, self.new
         try:
-            with bin_ferry.box(write=True) as items:
+            with store.box(write=True) as items:
                 self.assertEqual([i["id"] for i in items], [i["id"] for i in self.items])
         finally:
             config.STATE = state

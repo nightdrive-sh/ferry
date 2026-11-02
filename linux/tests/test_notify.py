@@ -13,7 +13,7 @@ import time
 import unittest
 from unittest import mock
 
-from load import bin_ferry, config, desktop, notices, owner
+from load import bin_ferry, config, desktop, notices, owner, store
 
 
 class NotifySend(unittest.TestCase):
@@ -321,7 +321,7 @@ class Received(unittest.TestCase):
         self.app.recent = (0.0, None)
 
     def items(self):
-        with bin_ferry.box() as items:
+        with store.box() as items:
             return items
 
     def test_a_text(self):

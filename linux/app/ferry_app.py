@@ -27,7 +27,7 @@ from gi.repository import Gdk, GdkPixbuf, Gio, GLib, Gtk, Pango  # noqa: E402
 
 import devices_page  # noqa: E402
 import look  # noqa: E402
-from ferry import config, desktop, notices  # noqa: E402
+from ferry import config, desktop, notices, store, tailnet  # noqa: E402
 
 core = None              # bin/ferry, as a module (main())
 REFRESH = 5              # seconds between looks at the box and the devices while the window shows
@@ -522,7 +522,7 @@ class Window(Gtk.ApplicationWindow):
                 if not refusal or refusal["step"] != "operator":
                     self.refused = refusal
                     self.refresh()
-            background(core.publish, done)
+            background(tailnet.publish, done)
 
     def mark_seen(self):
         """What arrived is seen once the window shows it: the tray's count goes, and a desktop's menu hears of it."""
@@ -531,7 +531,7 @@ class Window(Gtk.ApplicationWindow):
         if any(i.get("to") == "computer" and not i.get("seen") for i in self.data.get("items") or []):
             for i in self.data["items"]:
                 i["seen"] = True
-            background(lambda: (core.mark_seen(), desktop.changed()), lambda _: self.app.recount())
+            background(lambda: (store.mark_seen(), desktop.changed()), lambda _: self.app.recount())
 
     # MARK: Drawing
 
@@ -969,9 +969,9 @@ class Window(Gtk.ApplicationWindow):
         self.confirming = False
 
         def work():
-            with core.box(write=True) as items:
+            with store.box(write=True) as items:
                 for it in [i for i in items if i.get("to") == "computer"]:
-                    core.drop_file(it)
+                    store.drop_file(it)
                     items.remove(it)
             desktop.changed()
         background(work, lambda _: self.refresh())
@@ -989,8 +989,8 @@ class Window(Gtk.ApplicationWindow):
 
     def copy(self, item, row):
         # A code or a password leaves the box once copied (docs/protocol.md › Codes and passwords)
-        background(lambda: desktop.copy_text(item.get("text") or "", sensitive=core.secret(item)) and core.copied(item),
-                   lambda _: core.secret(item) and self.refresh())
+        background(lambda: desktop.copy_text(item.get("text") or "", sensitive=store.secret(item)) and store.copied(item),
+                   lambda _: store.secret(item) and self.refresh())
         if row is not None:
             title = row.title
             old, classes = title.get_label(), title.get_css_classes()
@@ -1010,7 +1010,7 @@ class Window(Gtk.ApplicationWindow):
             background(lambda: subprocess.run(["xdg-open", uri], env=desktop.desktop_env()))
 
     def remove(self, item):
-        background(lambda: (core.remove(item["id"]), desktop.changed()), lambda _: self.refresh())
+        background(lambda: (store.remove(item["id"]), desktop.changed()), lambda _: self.refresh())
 
     # MARK: Setup
 
@@ -1024,7 +1024,7 @@ class Window(Gtk.ApplicationWindow):
 
         def work():
             if action == "publish":
-                return ("publish", core.publish())
+                return ("publish", tailnet.publish())
             if action == "enable":
                 return ("enable", core.enable())
             if action == "tailscale-up":
@@ -1034,7 +1034,7 @@ class Window(Gtk.ApplicationWindow):
                 exe = shutil.which("tailscale") or "tailscale"
                 r = subprocess.run(["pkexec", exe, "set", f"--operator={user}"], capture_output=True, text=True)
                 if r.returncode == 0:
-                    return ("publish", core.publish())
+                    return ("publish", tailnet.publish())
                 return ("operator", (r.stdout + r.stderr).strip())
             return (action, None)
 
@@ -1655,7 +1655,7 @@ class App(Gtk.Application):
 
     def unseen(self):
         try:
-            with core.box() as items:
+            with store.box() as items:
                 return sum(1 for i in items if i.get("to") == "computer" and not i.get("seen"))
         except OSError:
             return 0

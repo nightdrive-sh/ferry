@@ -10,7 +10,7 @@ import tempfile
 import unittest
 from unittest import mock
 
-from load import bin_ferry, config
+from load import bin_ferry, config, tailnet
 
 ADDRESS = "https://pc.tail0.ts.net/ferry/"
 LINK = "https://nightdrive.sh/ferry/add#https://pc.tail0.ts.net/ferry/"
@@ -28,7 +28,7 @@ class Qr(unittest.TestCase):
     def setUp(self):
         self.runs = []
         tmp = tempfile.mkdtemp()
-        for p in [mock.patch.object(bin_ferry, "url", return_value=ADDRESS),
+        for p in [mock.patch.object(tailnet, "url", return_value=ADDRESS),
                   mock.patch.object(config, "QR", os.path.join(tmp, "qr.svg")),
                   mock.patch.object(shutil, "which", return_value="/usr/bin/qrencode"),
                   mock.patch.object(subprocess, "run", side_effect=self.run_)]:

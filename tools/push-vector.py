@@ -1,11 +1,10 @@
 #!/usr/bin/env python3
-"""Writes FerryKit's push test vector: a message encrypted by bin/ferry's own encrypt(), so the app is tested against
+"""Writes FerryKit's push test vector: a message encrypted by the Linux server's own encrypt(), so the app is tested against
 what a computer really sends, not against a second implementation of RFC 8291.
 
     uv run --with cryptography python3 tools/push-vector.py > FerryKit/Tests/FerryKitTests/Fixtures/push-vector.json
 """
 import base64
-import importlib.machinery
 import json
 import os
 import sys
@@ -21,7 +20,8 @@ def b64u(b):
 
 
 def main():
-    ferry = importlib.machinery.SourceFileLoader("ferry", FERRY).load_module()   # main() is guarded by __name__
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.realpath(FERRY))))   # the ferry package beside bin/
+    from ferry import push as ferry
     key = ec.generate_private_key(ec.SECP256R1())
     auth = os.urandom(16)
     p256dh = b64u(ferry.point(key))

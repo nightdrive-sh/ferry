@@ -4,6 +4,7 @@ as ferry_app gets bin/ferry as `core`: the helpers and the look are the window's
 from gi.repository import Gtk
 
 import look
+from ferry import forget
 
 
 class DevicesPage:
@@ -66,4 +67,4 @@ class DevicesPage:
 
     def forget(self, device, action):
         action.set_sensitive(False)
-        self.ui.background(lambda: self.ui.core.decide(device["id"], True), lambda _: self.refresh())
+        self.ui.background(lambda: forget.decide(device["id"], True), lambda _: self.refresh())

@@ -7,7 +7,7 @@ import os
 import tempfile
 import unittest
 
-from load import bin_ferry, config
+from load import bin_ferry, config, forget, push, store
 
 
 def peer(name, os_, online=True, uid=1):
@@ -57,7 +57,7 @@ class Devices(unittest.TestCase):
     def test_a_phone_is_listed_once_it_has_used_ferry(self):   # docs/protocol.md › Forgetting a device
         os.remove(os.path.join(self.tmp.name, "phones.json"))
         self.assertEqual([x["id"] for x in bin_ferry.devices(STATUS)], ["nightdrive-pc", "studio"])
-        bin_ferry.phones("ipad")
+        forget.phones("ipad")
         self.assertEqual([x["id"] for x in bin_ferry.devices(STATUS)], ["nightdrive-pc", "studio", "ipad"])
 
     def test_a_push_subscription_counts_as_having_used_it(self):   # an install from before phones.json
@@ -70,10 +70,10 @@ class Devices(unittest.TestCase):
     def test_phones_json_keeps_names_only(self):   # a file edited by hand
         with open(os.path.join(self.tmp.name, "phones.json"), "w") as f:
             json.dump(["iphone", "your phone", 5, None, "a.b"], f)
-        self.assertEqual(bin_ferry.phones(), {"iphone"})
+        self.assertEqual(forget.phones(), {"iphone"})
         with open(os.path.join(self.tmp.name, "phones.json"), "w") as f:
             json.dump({"not": "a list"}, f)
-        self.assertEqual(bin_ferry.phones(), set())
+        self.assertEqual(forget.phones(), set())
 
     def test_target_defaults_to_a_phone_online(self):
         self.assertEqual(bin_ferry.target(bin_ferry.devices(STATUS))["id"], "iphone")
@@ -96,15 +96,15 @@ class Devices(unittest.TestCase):
 
 class ForDevice(unittest.TestCase):
     def test_a_phone_sees_what_is_for_it_or_for_any(self):
-        self.assertTrue(bin_ferry.for_device({"to": "phone", "for": "iphone"}, "iphone"))
-        self.assertFalse(bin_ferry.for_device({"to": "phone", "for": "ipad"}, "iphone"))
-        self.assertTrue(bin_ferry.for_device({"to": "phone"}, "iphone"))           # sent before "for" existed
-        self.assertTrue(bin_ferry.for_device({"to": "computer", "from": "ipad"}, "iphone"))
+        self.assertTrue(store.for_device({"to": "phone", "for": "iphone"}, "iphone"))
+        self.assertFalse(store.for_device({"to": "phone", "for": "ipad"}, "iphone"))
+        self.assertTrue(store.for_device({"to": "phone"}, "iphone"))           # sent before "for" existed
+        self.assertTrue(store.for_device({"to": "computer", "from": "ipad"}, "iphone"))
 
     def test_push_only_to_that_phone(self):
         subs = [{"endpoint": "https://p/1", "device": "iphone"}, {"endpoint": "https://p/2", "device": "ipad"}]
-        self.assertEqual([s["device"] for s in bin_ferry.recipients(subs, False, "ipad")], ["ipad"])
-        self.assertEqual(len(bin_ferry.recipients(subs, False)), 2)
+        self.assertEqual([s["device"] for s in push.recipients(subs, False, "ipad")], ["ipad"])
+        self.assertEqual(len(push.recipients(subs, False)), 2)
 
 
 if __name__ == "__main__":

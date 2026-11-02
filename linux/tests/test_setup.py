@@ -4,14 +4,14 @@
 """
 import unittest
 
-from load import bin_ferry, config
+from load import bin_ferry, config, tailnet
 
 RUNNING = {"BackendState": "Running", "CertDomains": ["pc.tail0.ts.net"],
            "Self": {"DNSName": "pc.tail0.ts.net.", "UserID": 1}}
 
 
 def step(st=RUNNING, have=True, running=True, served=True):
-    s = bin_ferry.setup_step(st, have_tailscale=have, running=running, served=served)
+    s = tailnet.setup_step(st, have_tailscale=have, running=running, served=served)
     return s and s["step"]
 
 
@@ -20,37 +20,37 @@ class SetupStep(unittest.TestCase):
         self.assertIsNone(step())
 
     def test_tailscale_missing_links_its_download(self):
-        s = bin_ferry.setup_step({}, have_tailscale=False, running=True, served=False)
+        s = tailnet.setup_step({}, have_tailscale=False, running=True, served=False)
         self.assertEqual(s["step"], "tailscale-missing")
         self.assertEqual(s["link"], config.TAILSCALE_DOWNLOAD)
 
     def test_tailscale_not_running(self):
-        s = bin_ferry.setup_step({}, have_tailscale=True, running=True, served=False)
+        s = tailnet.setup_step({}, have_tailscale=True, running=True, served=False)
         self.assertEqual(s["step"], "tailscale-off")
         self.assertIn("systemctl", s["command"])
 
     def test_logged_out_gives_the_login_link_when_tailscale_has_one(self):
         st = {"BackendState": "NeedsLogin", "AuthURL": "https://login.tailscale.com/a/abc"}
-        s = bin_ferry.setup_step(st, have_tailscale=True, running=True, served=False)
+        s = tailnet.setup_step(st, have_tailscale=True, running=True, served=False)
         self.assertEqual(s["step"], "logged-out")
         self.assertEqual(s["link"], "https://login.tailscale.com/a/abc")
         self.assertEqual(s["command"], "sudo tailscale up")
 
     def test_logged_out_without_a_link(self):
-        s = bin_ferry.setup_step({"BackendState": "NeedsLogin"}, have_tailscale=True, running=True, served=False)
+        s = tailnet.setup_step({"BackendState": "NeedsLogin"}, have_tailscale=True, running=True, served=False)
         self.assertNotIn("link", s)
 
     def test_waiting_for_the_admin_to_approve_the_machine(self):
         self.assertEqual(step({"BackendState": "NeedsMachineAuth"}, served=False), "needs-approval")
 
     def test_tailscale_turned_off(self):
-        s = bin_ferry.setup_step({"BackendState": "Stopped"}, have_tailscale=True, running=True, served=False)
+        s = tailnet.setup_step({"BackendState": "Stopped"}, have_tailscale=True, running=True, served=False)
         self.assertEqual(s["step"], "tailscale-stopped")
         self.assertEqual(s["action"], "tailscale-up")
 
     def test_ferry_stopped_while_tailscale_is_fine(self):
         # Tailscale is fine and Ferry isn't running: turning Ferry on is the one thing to do
-        s = bin_ferry.setup_step(RUNNING, have_tailscale=True, running=False, served=True)
+        s = tailnet.setup_step(RUNNING, have_tailscale=True, running=False, served=True)
         self.assertEqual(s["step"], "stopped")
         self.assertEqual(s["action"], "enable")
 
@@ -59,7 +59,7 @@ class SetupStep(unittest.TestCase):
 
     def test_https_certificates_off(self):
         st = dict(RUNNING, CertDomains=None)
-        s = bin_ferry.setup_step(st, have_tailscale=True, running=True, served=False)
+        s = tailnet.setup_step(st, have_tailscale=True, running=True, served=False)
         self.assertEqual(s["step"], "https-off")
         self.assertEqual(s["link"], config.TAILSCALE_DNS)
 
@@ -74,41 +74,41 @@ class SetupStep(unittest.TestCase):
 class PublishProblem(unittest.TestCase):
     def test_operator_rights_missing(self):
         out = "Access denied: serve config denied\n\nUse 'sudo tailscale serve ...' or 'tailscale set --operator=$USER'"
-        s = bin_ferry.publish_problem(out, user="jari")
+        s = tailnet.publish_problem(out, user="jari")
         self.assertEqual(s["step"], "operator")
         self.assertEqual(s["command"], "sudo tailscale set --operator=jari")
         self.assertEqual(s["action"], "operator")
 
     def test_tailscale_s_own_words_and_link(self):
         out = "Serve is not enabled on your tailnet.\nTo enable, visit:\n\n  https://login.tailscale.com/f/serve?node=n1\n"
-        s = bin_ferry.publish_problem(out, user="jari")
+        s = tailnet.publish_problem(out, user="jari")
         self.assertEqual(s["step"], "problem")
         self.assertEqual(s["link"], "https://login.tailscale.com/f/serve?node=n1")
         self.assertEqual(s["text"], "Serve is not enabled on your tailnet.")
 
     def test_nothing_said(self):
-        self.assertEqual(bin_ferry.publish_problem("", user="jari")["text"], "tailscale serve failed")
+        self.assertEqual(tailnet.publish_problem("", user="jari")["text"], "tailscale serve failed")
 
 
 class Publish(unittest.TestCase):
     def setUp(self):
-        self.serve = bin_ferry.serve
+        self.serve = tailnet.serve
 
     def tearDown(self):
-        bin_ferry.serve = self.serve
+        tailnet.serve = self.serve
 
     def test_published(self):
-        bin_ferry.serve = lambda on, raw=False: ""
-        self.assertIsNone(bin_ferry.publish())
+        tailnet.serve = lambda on, raw=False: ""
+        self.assertIsNone(tailnet.publish())
 
     def test_refused(self):
-        bin_ferry.serve = lambda on, raw=False: "Access denied: serve config denied"
-        self.assertEqual(bin_ferry.publish()["step"], "operator")
+        tailnet.serve = lambda on, raw=False: "Access denied: serve config denied"
+        self.assertEqual(tailnet.publish()["step"], "operator")
 
     def test_serve_says_why_in_a_terminal(self):
-        bin_ferry.serve = self.serve
-        self.assertIn("--operator", bin_ferry.serve_message("Access denied: serve config denied"))
-        self.assertEqual(bin_ferry.serve_message("line one\nline two"), "line two")
+        tailnet.serve = self.serve
+        self.assertIn("--operator", tailnet.serve_message("Access denied: serve config denied"))
+        self.assertEqual(tailnet.serve_message("line one\nline two"), "line two")
 
 
 if __name__ == "__main__":
