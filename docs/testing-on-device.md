@@ -168,6 +168,8 @@ computers on a Ferry that sends the "awake" push):
 - [ ] Both computers asleep: Send Clipboard with a link says "Waiting for <setup computer>", and the row shows
       above Received ("Waiting for … · 3 d left"). Picking the other in the Send to menu ("can't reach · it waits")
       makes the next send wait for that one.
+      With a long computer name ("Jari - MacBook"), the bar's "Waiting for …" / "Sent to …" stays inside the
+      button: the name is cut at its end, or with large text only "Waiting" / "Sent" shows, and VoiceOver reads it all.
 - [ ] Ferry closed (swiped away is not the test: just in the background), wake the computer: within a minute or
       two "Delivered to <computer>" shows on the phone, and the link is in the computer's box, not on its clipboard.
 - [ ] The same with a photo of a few MB, and with a 100 MB video: note whether the video finished in the background

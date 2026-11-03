@@ -114,9 +114,9 @@ struct SendBar: View {
         case .sending:
             Label("Sending…", systemImage: "arrow.up.circle").labelStyle(BarLabel())
         case .sent(let to):
-            Label("Sent to \(to)", systemImage: "checkmark").labelStyle(BarLabel())
+            BarStatus(kind: .sent, name: to)
         case .waiting(let name):
-            Label("Waiting for \(name)", systemImage: "clock").labelStyle(BarLabel())
+            BarStatus(kind: .waiting, name: name)
         case .failed(let message):
             VStack(spacing: 1) {
                 Text(message).font(.system(size: 13, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)
@@ -186,16 +186,5 @@ struct PickedFile: Transferable {
         let dest = folder.appending(path: file.lastPathComponent)
         try FileManager.default.copyItem(at: file, to: dest)
         return dest
-    }
-}
-
-/// Send Clipboard's label: icon and text in the button's own colours.
-private struct BarLabel: LabelStyle {
-    func makeBody(configuration: Configuration) -> some View {
-        HStack(spacing: 10) {
-            configuration.icon.font(.system(size: 20, weight: .semibold))
-            configuration.title.font(.system(.title3, weight: .semibold)).lineLimit(1)
-        }
-        .foregroundStyle(Theme.onPrimary)
     }
 }
