@@ -41,6 +41,9 @@ service.
 - `Content-Encoding: aes128gcm`, and a body of 2800 bytes at most (base64 in the APNs payload must stay under its
   4096-byte limit), else 413. The encrypted body is the plaintext plus 103 bytes.
 - `TTL` becomes `apns-expiration`; `Urgency: high` (or none) priority 10, anything lower priority 5.
+- `Urgency: very-low` is a computer's "awake" push (docs/protocol.md › Notifications): it goes as a background push
+  (`apns-push-type: background`, priority 5, `{"aps": {"content-available": 1}, "a": …, "m": …}`), which shows nothing
+  and wakes the app itself rather than its notification extension.
 - 201 when Apple has it. 404 for an unknown address and 410 when Apple says the token is dead (the address is then
   deleted): either drops the computer's subscription. 429 over 30 pushes a minute per address or 600 an hour per
   sending IP, 502 when Apple refuses it otherwise.

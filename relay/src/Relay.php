@@ -131,15 +131,20 @@ final class Relay
         if ($this->store->hit("addr:$id", 60, $now) > self::PUSHES_PER_MINUTE) {
             return Response::text(429, 'Too many notifications, try again later');
         }
-        $headers = ['apns-push-type' => 'alert',
-                    'apns-priority' => in_array(strtolower($r->header('Urgency')), ['', 'high'], true) ? '10' : '5'];
+        $urgency = strtolower($r->header('Urgency'));
+        // A computer's "awake" push (docs/protocol.md › Notifications) shows nothing: it wakes the app, which sends
+        // what waits for that computer. Apple wants such a push at priority 5.
+        $silent = $urgency === 'very-low';
+        $headers = ['apns-push-type' => $silent ? 'background' : 'alert',
+                    'apns-priority' => in_array($urgency, ['', 'high'], true) ? '10' : '5'];
         $ttl = (int) $r->header('TTL');
         if ($ttl > 0) {
             $headers['apns-expiration'] = (string) ($now + $ttl);
         }
-        $payload = ['aps' => ['alert' => ['title-loc-key' => 'PUSH_FALLBACK_TITLE', 'loc-key' => 'PUSH_FALLBACK_BODY'],
-                              'mutable-content' => 1, 'sound' => 'default'],
-                    'a' => $id, 'm' => base64_encode($r->body)];
+        $aps = $silent ? ['content-available' => 1]
+            : ['alert' => ['title-loc-key' => 'PUSH_FALLBACK_TITLE', 'loc-key' => 'PUSH_FALLBACK_BODY'],
+               'mutable-content' => 1, 'sound' => 'default'];
+        $payload = ['aps' => $aps, 'a' => $id, 'm' => base64_encode($r->body)];
         $result = $this->apns->send($a['token'], $a['env'], $payload, $headers);
         if ($result->status === 200) {
             $this->store->touch($id, $now);

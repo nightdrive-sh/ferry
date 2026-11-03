@@ -219,6 +219,17 @@ whatever the phone is: a web page subscribes with its browser's push service, th
 (the JWT's `aud` is the endpoint's origin), `Content-Encoding: aes128gcm`, `TTL` (7 days) and `Urgency: high`. An endpoint
 that answers 404 or 410 is gone, and the computer drops its subscription.
 
+**The "awake" push.** When its Ferry starts, and when the computer wakes from sleep, a computer tells the apps it can be
+reached again, so one with a send waiting for it sends it (› Clients › Sends that wait):
+- **When:** once Tailscale runs and the computer is published (`tailscale serve`), tried for a few minutes after the
+  start or the wake; not before, or the app would find nobody to send to.
+- **To whom:** only the `direct` subscriptions (the app's). A web page's push service makes it show a notification for
+  every push, and a page sends nothing in the background anyway.
+- **What:** `{"title": "<the computer's name>", "body": "", "machine": "", "awake": true}`, encrypted like any other,
+  with `Urgency: very-low` and `TTL: 3600`: told an hour later, the app learns nothing it wouldn't from its own poll.
+- **On the phone** it shows nothing. The relay sends it as a background push (below), which wakes the app for a few
+  seconds; the app sends what waits for that computer, and asks it nothing else.
+
 **For web pages only:**
 - `POST api/test-push`: a test notification to this computer's subscriptions. A computer without a page needn't have it
   (404).
@@ -303,6 +314,8 @@ Push service like any other (above):
 - it accepts a push only when it is signed by the VAPID key the address was made for (`push` in `api/items`), else 403
 - a body may be 2800 bytes at most, else 413
 - 30 pushes a minute per address, 600 an hour per sending computer, else 429
+- `Urgency: very-low` (the "awake" push) goes to the phone as a silent background push: no alert, no sound, and the
+  app, not its notification extension, gets it. Any other push is a notification.
 - 201 when Apple has the notification; 404 for an address it doesn't know and 410 for a phone that is gone, which drop the
   subscription; 502 when Apple refuses it otherwise
 
@@ -313,6 +326,36 @@ The relay never sees the content. Its API for the app: `relay/README.md`.
 A client knows one computer to start with: the setup one, from its QR code or a typed name. It finds the rest with
 `api/machines`, and talks to each computer directly at its own base URL. Over all the computers, the phone's *Received*
 is every computer's `to: "phone"` items.
+
+### Sends that wait
+
+A send to a computer that is asleep or off waits on the sending device until that computer is back, **3 days at most**.
+Nothing waits on another computer or on the push relay: the relay never sees content. A computer needs nothing new for
+it, since a send that waited arrives as `api/text` or `api/upload` like any other.
+
+- **Which sends wait:** one to a computer that doesn't answer (no connection, a timeout, or a 502/503/504 from
+  `tailscale serve` while that computer's Ferry isn't up yet). One it answered with an error (400, 413, 507) failed and
+  doesn't wait. A computer the sender knows is offline (Tailscale says so, or it didn't answer its last poll) isn't
+  tried first: the try would only wait for its timeout, and on an iPhone it jams the tunnel to the others.
+- **Dropped unclaimed** after 3 days, a code or a password after 15 minutes (› Codes and passwords), and at once when
+  its computer is forgotten (› Forgetting a device). The user can cancel one until it goes.
+- **The clipboard** (`clip`) is sent without `clip` once it waited: put onto the other computer's clipboard later, it
+  would replace whatever was copied there since. It arrives in the box, for its user to copy.
+- **Files** wait as the sender's own copies, so a file moved or deleted meanwhile still goes. A send of several files
+  that broke off goes on from the first file the computer didn't take.
+- **When it goes:**
+  - **A computer** sends it as soon as Tailscale lists the other one online again (it reads Tailscale's status every
+    few seconds while anything waits), asking again after a minute when that one is online but doesn't take it yet.
+  - **The iPhone app** sends it when its poll finds the computer awake (› `api/machines`), when the computer's "awake"
+    push wakes it in the background (› Notifications), and when iOS gives it background time (a background app
+    refresh, asked for while anything waits). It sends within the background time iOS gives it (about half a minute,
+    more with a background task); a file that doesn't finish in it goes on the next chance, or when the app is
+    opened.
+- **What the user sees:** a waiting send is a row of its own above what was received ("Waiting for MacBook · 3 d
+  left"), with a Cancel; a send that waits says "Waiting for MacBook" where it would say "Sent to MacBook"; one that
+  goes later is announced on the sending device ("Delivered to MacBook"). `ferry list` shows them, `ferry rm N` cancels
+  one, and `ferry list --json` carries them as `waiting`: `{id, time, until, device, deviceName, kind, text | name,
+  files, size, secret}`.
 
 ### Adding a phone
 

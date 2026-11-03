@@ -50,6 +50,18 @@ final class RelayPushTest extends RelayTestCase
         $this->assertLessThanOrEqual(4096, strlen((string) json_encode($this->apns->sent[0]['payload'], JSON_UNESCAPED_SLASHES)));
     }
 
+    public function testTheAwakePushIsSilent(): void
+    {
+        [$a, $auth] = $this->address();
+        $this->assertSame(201, $this->push($a['id'], $auth, 'x', ['TTL' => '3600', 'Urgency' => 'very-low']));
+        $sent = $this->apns->sent[0];
+        $this->assertSame('background', $sent['headers']['apns-push-type']);
+        $this->assertSame('5', $sent['headers']['apns-priority']);
+        $this->assertSame(['content-available' => 1], $sent['payload']['aps']);
+        $this->assertSame(base64_encode('x'), $sent['payload']['m']);
+        $this->assertSame($a['id'], $sent['payload']['a']);
+    }
+
     public function testTtlAndUrgency(): void
     {
         [$a, $auth] = $this->address();
