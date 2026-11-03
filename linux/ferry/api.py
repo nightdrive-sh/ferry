@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler
 
-from . import config, desktop, forget, idle, push, server, store, tailnet
+from . import bodies, config, desktop, forget, idle, push, server, store, tailnet
 
 
 def handler(app):
@@ -32,8 +32,7 @@ def handler(app):
             which keeps its connection to us open, would send the next request after the leftover body."""
             if getattr(self, "consumed", False):
                 return False
-            return int(self.headers.get("Content-Length") or 0) > 0 or \
-                "chunked" in (self.headers.get("Transfer-Encoding") or "").lower()
+            return bodies.unread(self.headers)
 
         def send(self, code, body=b"", kind="application/json", headers=None):
             if self.unread():
@@ -106,41 +105,16 @@ def handler(app):
             return path, dict(urllib.parse.parse_qsl(u.query))
 
         def read_body(self, limit):
-            n = int(self.headers.get("Content-Length") or 0)
+            n = bodies.length(self.headers)
             if n > limit:
                 raise ValueError("too big")
             self.consumed = True
             return self.rfile.read(n)
 
         def body(self, limit):
-            """The request body in pieces: a Content-Length, or chunked."""
+            """The request body in pieces (bodies.pieces): a Content-Length, or chunked."""
             self.consumed = True   # partly read is unread too: an error ends the connection (upload())
-            if "chunked" in (self.headers.get("Transfer-Encoding") or "").lower():
-                total = 0
-                while True:
-                    size = int(self.rfile.readline(1024).split(b";")[0].strip() or b"x", 16)
-                    if size == 0:
-                        while self.rfile.readline(1024).strip():
-                            pass
-                        return
-                    total += size
-                    if total > limit:
-                        raise ValueError("too big")
-                    while size > 0:
-                        chunk = self.rfile.read(min(config.CHUNK, size))
-                        if not chunk:
-                            raise OSError("connection closed")
-                        size -= len(chunk)
-                        yield chunk
-                    self.rfile.readline(1024)
-            else:
-                left = int(self.headers.get("Content-Length") or 0)
-                while left > 0:
-                    chunk = self.rfile.read(min(config.CHUNK, left))
-                    if not chunk:
-                        raise OSError("connection closed")
-                    left -= len(chunk)
-                    yield chunk
+            yield from bodies.pieces(self.rfile, self.headers, limit, config.CHUNK)
 
         def do_HEAD(self):
             self.do_GET()
@@ -289,7 +263,7 @@ def handler(app):
                 self.send(400, "Bad request")
 
         def upload(self, q):
-            n = int(self.headers.get("Content-Length") or 0)
+            n = bodies.length(self.headers)
             if n > config.MAX_FILE:
                 return self.send(413, f"Too big: {config.human(config.MAX_FILE)} at most")
             dest = config.downloads()
@@ -306,15 +280,26 @@ def handler(app):
                     continue
             try:
                 with out:
+                    checked = 0
                     for chunk in self.body(config.MAX_FILE):
                         out.write(chunk)
                         size += len(chunk)
+                        # A chunked upload says no size at the start, and uploads run side by side: the free space
+                        # is looked at again as the file grows
+                        if size - checked >= config.FREE_CHECK:
+                            checked = size
+                            if shutil.disk_usage(dest).free < config.MIN_FREE:
+                                raise bodies.NoSpace("disk full")
             except (OSError, ValueError) as e:
                 # Not the path: the file's name stays out of the journal too
-                print(f"an upload failed: {e.strerror if isinstance(e, OSError) else e}", flush=True)
+                print(f"an upload failed: {e.strerror or e if isinstance(e, OSError) else e}", flush=True)
                 with contextlib.suppress(OSError):
                     os.remove(part)
                 self.consumed = False
+                if isinstance(e, bodies.TooBig):
+                    return self.send(413, f"Too big: {config.human(config.MAX_FILE)} at most")
+                if isinstance(e, bodies.NoSpace):
+                    return self.send(507, "Not enough space on the computer")
                 return self.send(400, "Upload failed")
             if os.path.exists(path):   # taken meanwhile
                 path = store.unique(path)

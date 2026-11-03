@@ -171,8 +171,8 @@ Body `{"text": "…", "clip": true}`, `Content-Type: application/json`.
 - **The answer:** `{"ok": true, "name": "<the name it was saved as>"}`.
 - **Errors:**
   - 413 over 4 GiB
-  - 507 when the computer would have less than 2 GiB free
-  - 400 when the upload broke off
+  - 507 when the computer would have less than 2 GiB free, also partway: a chunked body says no size first
+  - 400 when the upload broke off, or a size in it is anything but digits (hex for a chunk's): no sign
 
 ### `POST api/remove?id=<id>`
 

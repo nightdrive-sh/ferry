@@ -53,6 +53,7 @@ MAX_FILE = 4 << 30           # bytes per file from the phone
 MAX_TEXT = 1 << 20           # bytes of text
 PUSH_PAYLOAD = 2600          # bytes of a notification: Ferry's push relay takes 2800 encrypted (APNs' 4 KB as base64)
 MIN_FREE = 2 << 30           # bytes left free on the disk: an upload that would go below this is refused
+FREE_CHECK = 64 << 20        # bytes of an upload between its looks at the free space
 PREVIEW = re.compile(r"^image/(jpeg|png|gif|webp|bmp)$")   # a received image the notification shows as a picture
 INLINE = re.compile(r"^(image/(jpeg|png|gif|webp|heic|heif|avif)|video/|audio/|application/pdf$|text/plain$)")
                              # shown in the browser; any other file is a download (an HTML or SVG file would run its
