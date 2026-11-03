@@ -2,7 +2,7 @@
 
 A mailbox between your devices, over [Tailscale](https://tailscale.com).
 
-Send texts, links, photos, files and the clipboard between your phone and your computers. Copy a code on the phone, press Send Clipboard, paste it on the computer. What a computer sends waits in its box until your phone or another computer picks it up, and the phone is notified when a computer sends it something.
+Send texts, links, photos, files and the clipboard between your phone and your computers. Copy a code on the phone, press Send Clipboard, paste it on the computer. What a computer sends waits in its box until your phone or another computer picks it up, and the phone is notified when a computer sends it something. Neither end has to be awake: a send to a computer that is asleep or off waits on the sending device and goes when that computer is back, within three days.
 
 <p align="center">
   <img src="docs/images/iphone.jpg" width="240" alt="Ferry on an iPhone: a photo, a Wi-Fi password, a boarding pass, an address and links received from a MacBook, and the Send Clipboard button"><br>
@@ -46,7 +46,8 @@ A computer that ran Nightdrive's Ferry plugin keeps everything: its state (the b
 | `ferry send [file…]` | Sends files, or a text; with nothing, the clipboard. `--to DEVICE` for another device than the picked one |
 | `ferry devices` | Your other computers running Ferry and your phones, the picked one marked |
 | `ferry target [DEVICE]` | The device sends go to, or picks another |
-| `ferry list` | What's in the box, numbered |
+| `ferry list` | What's in the box, numbered, and the sends waiting for a computer that is asleep or off |
+| `ferry rm <n>` | An item out of the box, or a waiting send cancelled (`ferry clear waiting`: all of them) |
 | `ferry get [n]` | An item from the phone (the newest without a number): a text printed (in a terminal, with its control characters shown as escapes), a file saved here |
 | `ferry open <n>` / `ferry copy <n>` | Opens a file, copies a text |
 | `ferry qr` | Add Device's QR code, for adding a phone (`ferry url` is the address itself) |

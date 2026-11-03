@@ -163,6 +163,20 @@ computer only through one that answers (`api/machines`). Needs a server with the
 - [ ] Put a computer to sleep with Ferry open: it shows "can't reach" within about 20 s, and the other keeps updating.
 - [ ] Tailscale off on the phone, then on again and back to Ferry: the computers turn green at once.
 
+**Sends that wait** (docs/protocol.md › Clients › Sends that wait; needs the relay with the background push, and the
+computers on a Ferry that sends the "awake" push):
+- [ ] Both computers asleep: Send Clipboard with a link says "Waiting for <setup computer>", and the row shows
+      above Received ("Waiting for … · 3 d left"). Picking the other in the Send to menu ("can't reach · it waits")
+      makes the next send wait for that one.
+- [ ] Ferry closed (swiped away is not the test: just in the background), wake the computer: within a minute or
+      two "Delivered to <computer>" shows on the phone, and the link is in the computer's box, not on its clipboard.
+- [ ] The same with a photo of a few MB, and with a 100 MB video: note whether the video finished in the background
+      or only when Ferry was opened.
+- [ ] Safari's share sheet with both asleep: tap one ("None of them answers…"), "Waiting for …", and it goes when
+      that computer wakes.
+- [ ] Cancel (the row's ×, or a swipe) takes it away, and nothing arrives when the computer wakes.
+- [ ] A code copied (801566) and sent while both sleep: gone from the row after 15 minutes, never delivered later.
+
 ## Demo ("Try without a computer")
 
 What App Review sees: a fresh install, Tailscale off or not installed. DemoTests covers the flow in the simulator.
