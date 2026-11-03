@@ -71,6 +71,7 @@ actor FakeOutbound: Outbound {
     func set(status: Int, for host: String) { statusByHost[host] = status }
     func set(answer: Data, for host: String) { answerByHost[host] = answer }
     func set(down host: String) { down.insert(host) }
+    func set(up host: String) { down.remove(host) }
 
     private func answer(_ request: URLRequest) throws -> (status: Int, body: Data) {
         let host = request.url?.host() ?? ""

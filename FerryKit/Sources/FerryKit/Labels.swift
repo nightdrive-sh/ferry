@@ -8,6 +8,14 @@ public enum Age {
         if seconds < 86400 { return "\(Int(seconds / 3600)) h" }
         return "\(Int(seconds / 86400)) d"
     }
+
+    /// How long a send that waits for its computer has before it is dropped: "3 d left", "47 h left", "12 min
+    /// left" (look.py's `left()`). Days are rounded, so a send just made has 3, not 2.
+    public static func left(_ seconds: TimeInterval) -> String {
+        if seconds >= 2 * 86400 { return "\(Int((seconds / 86400).rounded())) d left" }
+        if seconds >= 3600 { return "\(Int(seconds / 3600)) h left" }
+        return "\(max(Int(seconds / 60), 1)) min left"
+    }
 }
 
 /// A file's size, 1000-based as the page shows it: "240 B", "5.7 MB".

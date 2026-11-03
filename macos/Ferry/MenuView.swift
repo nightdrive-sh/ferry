@@ -30,8 +30,13 @@ struct MenuView: View {
 
     /// The list's height, which the tiles keep so the popover doesn't jump while a drag comes and goes
     private var listHeight: CGFloat {
-        min(CGFloat(model.received.count) * (Self.rowHeight + 2), Self.listHeight)
+        let rows = CGFloat(model.received.count + model.waiting.count) * (Self.rowHeight + 2)
+        let heading: CGFloat = model.waiting.isEmpty || model.received.isEmpty ? 0 : Self.headingHeight
+        return min(rows + heading, Self.listHeight)
     }
+
+    /// RECEIVED under the sends that wait
+    static let headingHeight: CGFloat = 34
 
     var body: some View {
         VStack(spacing: 8) {
@@ -106,7 +111,8 @@ struct MenuView: View {
 
     private var header: some View {
         HStack(spacing: 10) {
-            Text(SetupStep.needed(model) ? "FERRY" : dragging ? "DROP TO SEND" : "RECEIVED")
+            // The sends that wait come first and name the list; the received ones get a heading of their own below
+            Text(SetupStep.needed(model) ? "FERRY" : dragging ? "DROP TO SEND" : model.waiting.isEmpty ? "RECEIVED" : "WAITING")
                 .font(.mono(.caption, weight: .bold)).tracking(1.5)
                 .foregroundStyle(Theme.primary)
             Spacer()
@@ -120,9 +126,8 @@ struct MenuView: View {
                     confirmingClear = false
                     Task { await model.clear() }
                 }
-            } else if !model.received.isEmpty {
-                Button("Clear") { confirmingClear = true }
-                    .buttonStyle(.plain).foregroundStyle(Theme.dim)
+            } else if !model.received.isEmpty && model.waiting.isEmpty {
+                clearButton
             }
             // The question needs the row's width; the menu is back once it is answered
             if !confirmingClear { more }
@@ -138,10 +143,16 @@ struct MenuView: View {
         }
     }
 
+    /// Received's Clear: it asks in the header, where the question has room
+    private var clearButton: some View {
+        Button("Clear") { confirmingClear = true }
+            .buttonStyle(.plain).foregroundStyle(Theme.dim).controlSize(.small)
+    }
+
     // MARK: Received
 
     @ViewBuilder private var received: some View {
-        if model.received.isEmpty {
+        if model.received.isEmpty && model.waiting.isEmpty {
             VStack(spacing: 4) {
                 Text("Things your devices send appear here.")
                 Text("On your iPhone, Send Clipboard sends what you copied to this Mac.")
@@ -153,6 +164,19 @@ struct MenuView: View {
             TimelineView(.everyMinute) { context in
                 ScrollView {
                     LazyVStack(spacing: 2) {
+                        ForEach(model.waiting) { send in
+                            WaitingRow(send: send, now: context.date) { Task { await model.cancel(send) } }
+                        }
+                        if !model.waiting.isEmpty && !model.received.isEmpty {
+                            HStack {
+                                Text("RECEIVED").font(.mono(.caption, weight: .bold)).tracking(1.5)
+                                    .foregroundStyle(Theme.primary)
+                                Spacer()
+                                if !confirmingClear { clearButton }
+                            }
+                            .padding(.horizontal, 8)
+                            .frame(height: Self.headingHeight, alignment: .bottom)
+                        }
                         ForEach(model.received, id: \.id) { item in
                             ReceivedRow(item: item, now: context.date, thumbnail: model.thumbnail(for: item)) { action in
                                 act(action, on: item)

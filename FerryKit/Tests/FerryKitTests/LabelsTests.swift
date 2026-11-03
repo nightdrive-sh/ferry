@@ -17,6 +17,12 @@ let sizes: [(Int64, String)] = [(0, "0 B"), (240, "240 B"), (999, "999 B"), (100
         #expect(Age.short(-30) == "now")
     }
 
+    @Test func timeLeftForASendThatWaits() {
+        #expect(Age.left(3 * 86400 - 5) == "3 d left")   // rounded: one just made has three days
+        #expect(Age.left(47 * 3600 + 59) == "47 h left")
+        #expect(Age.left(30) == "1 min left")
+    }
+
     @Test(arguments: sizes)
     func byteSize(bytes: Int64, label: String) {
         #expect(ByteSize.format(bytes) == label)

@@ -15,12 +15,18 @@ struct ServerRig {
     /// phones: the ones that have used Ferry here (phones.json), which are the ones listed
     init(known: [KnownComputer] = [KnownComputer(id: "nightdrive", name: "Nightdrive",
                                                url: "https://nightdrive.tail1234.ts.net/ferry/", idle: 0, seen: 1)],
-         phones: [String] = ["iphone"], port: UInt16? = nil) throws {
+         phones: [String] = ["iphone"], port: UInt16? = nil, clock: TestClock? = nil) throws {
         StateFile.save(known, state.appending(path: "machines.json"))
         StateFile.save(phones, state.appending(path: "phones.json"))
         var config = ServerConfig(state: state)
         if let port { config.port = port }   // 0 for a test that starts it: never the port of the Ferry running here
-        server = try FerryServer(config: config, system: system, tailscale: tailscale, outbound: outbound)
+        let (system, tailscale, outbound) = (system, tailscale, outbound)
+        if let clock {
+            server = try FerryServer(config: config, system: system, tailscale: tailscale, outbound: outbound,
+                                     clock: clock.function)
+        } else {
+            server = try FerryServer(config: config, system: system, tailscale: tailscale, outbound: outbound)
+        }
     }
 
     func device(_ id: String) async throws -> Device {
@@ -36,7 +42,7 @@ struct ServerRig {
                                                      keys: .init(p256dh: keys.p256dh, auth: keys.authString),
                                                      device: "iphone", time: 0, direct: true))
         let iphone = try await r.device("iphone")
-        #expect(await r.server.send(.text("801566", clip: false), to: iphone) == nil)
+        #expect(await r.server.send(.text("801566", clip: false), to: iphone) == .sent)
         let item = try #require(await r.server.box.items().last)
         #expect(item.to == "phone" && item.text == "801566" && item.forDevice == "iphone")
         let pushed = try #require(await r.outbound.sent.first { $0.request.url?.host() == "push.nightdrive.sh" })
@@ -64,10 +70,10 @@ struct ServerRig {
         try Data("b".utf8).write(to: folder.appending(path: "b.jpg"))
         try Data("h".utf8).write(to: folder.appending(path: ".hidden"))
         let iphone = try await r.device("iphone")
-        #expect(await r.server.send(.files([folder]), to: iphone) == nil)   // a folder sends its files, not dotfiles
+        #expect(await r.server.send(.files([folder]), to: iphone) == .sent)   // a folder sends its files, not dotfiles
         #expect(await r.server.box.items().compactMap(\.name) == ["a.pdf", "b.jpg"])
-        #expect(await r.server.send(.files([folder.appending(path: "nothing")]), to: iphone) == "No files to send there")
-        #expect(await r.server.send(.text("  ", clip: false), to: iphone) == "Nothing to send")
+        #expect(await r.server.send(.files([folder.appending(path: "nothing")]), to: iphone) == .failed("No files to send there"))
+        #expect(await r.server.send(.text("  ", clip: false), to: iphone) == .failed("Nothing to send"))
     }
 
     @Test func sendToComputer() async throws {
@@ -76,24 +82,24 @@ struct ServerRig {
         try Data("pdf".utf8).write(to: file)
         await r.outbound.set(status: 200, for: "nightdrive.tail1234.ts.net")
         let nd = try await r.device("nightdrive")
-        #expect(await r.server.send(.files([file]), to: nd) == nil)
+        #expect(await r.server.send(.files([file]), to: nd) == .sent)
         let up = try #require(await r.outbound.sent.last)
         #expect(up.request.url?.absoluteString == "https://nightdrive.tail1234.ts.net/ferry/api/upload?name=a.pdf&type=application/pdf")
         #expect(up.request.value(forHTTPHeaderField: "X-Ferry") == "1")
         #expect(up.file == file)
-        #expect(await r.server.send(.text("801566", clip: true), to: nd) == nil)
+        #expect(await r.server.send(.text("801566", clip: true), to: nd) == .sent)
         let text = try #require(await r.outbound.sent.last)
         #expect(text.request.url?.absoluteString == "https://nightdrive.tail1234.ts.net/ferry/api/text")
         #expect(try JSONSerialization.jsonObject(with: text.body) as? [String: AnyHashable] == ["text": "801566", "clip": true])
         await r.outbound.set(down: "nightdrive.tail1234.ts.net")
-        #expect(await r.server.send(.text("x", clip: false), to: nd) == "Nightdrive didn't answer: it's asleep, or Ferry is off there")
+        #expect(await r.server.send(.text("x", clip: false), to: nd) == .waiting)   // OutboxTests: it goes later
     }
 
     @Test func clipboardImageToComputer() async throws {   // Final review: an image couldn't go with clip=1
         let r = try ServerRig()
         await r.outbound.set(status: 200, for: "nightdrive.tail1234.ts.net")
         let png = try ClipboardFile.write(Data([1, 2, 3]))
-        #expect(await r.server.send(.files([png], clip: true), to: try await r.device("nightdrive")) == nil)
+        #expect(await r.server.send(.files([png], clip: true), to: try await r.device("nightdrive")) == .sent)
         let up = try #require(await r.outbound.sent.last)
         #expect(up.request.url?.absoluteString == "https://nightdrive.tail1234.ts.net/ferry/api/upload?name=Clipboard.png&type=image/png&clip=1")
     }
@@ -101,7 +107,7 @@ struct ServerRig {
     @Test func sendToUnknownComputer() async throws {
         let r = try ServerRig(known: [])
         let studio = Device(id: "studio", name: "Studio", kind: .computer, online: false, inUse: false)
-        #expect(await r.server.send(.text("x", clip: false), to: studio) == "Studio isn't running Ferry")
+        #expect(await r.server.send(.text("x", clip: false), to: studio) == .failed("Studio isn't running Ferry"))
     }
 
     @Test func pickSticks() async throws {
@@ -165,7 +171,7 @@ struct ServerRig {
         try Data(count: 300).write(to: b)
         let seen = Mutex<[Double]>([])
         let error = await r.server.send(.files([a, b]), to: try await r.device("nightdrive")) { p in seen.withLock { $0.append(p) } }
-        #expect(error == nil)
+        #expect(error == .sent)
         #expect(seen.withLock { $0 } == [0.125, 0.25, 0.625, 1.0])   // bytes: 50, 100, 250, 400 of 400
     }
 

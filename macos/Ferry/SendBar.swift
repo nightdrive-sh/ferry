@@ -120,6 +120,7 @@ struct SendBar: View {
         case .idle: String(localized: "Send Clipboard")
         case .sending: String(localized: "Sending…")
         case .sent(let name): String(localized: "Sent to \(name) ✓")
+        case .waiting(let name): String(localized: "Waiting for \(name)")
         case .failed: String(localized: "Try Again")
         case .nothing: String(localized: "Nothing on the clipboard")
         }
@@ -130,6 +131,7 @@ struct SendBar: View {
         switch model.sendState {
         case .failed: "arrow.clockwise"
         case .sent: nil
+        case .waiting: "clock"
         default: "doc.on.clipboard"
         }
     }

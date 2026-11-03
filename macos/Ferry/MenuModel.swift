@@ -16,6 +16,8 @@ final class MenuModel {
         case sending(Double?)
         /// To the device of this name
         case sent(String)
+        /// For the computer of this name, which is asleep or off: it goes when that one is back
+        case waiting(String)
         /// Why not
         case failed(String)
         /// The clipboard had nothing to send
@@ -28,6 +30,8 @@ final class MenuModel {
     /// The server couldn't start (e.g. another Ferry holds the port)
     var startError: String?
     var received: [BoxItem] = []
+    /// Sends to a computer that is asleep or off, newest first
+    var waiting: [WaitingSend] = []
     var devices: [Device] = []
     var target: Device?
     var address: URL?
@@ -89,6 +93,8 @@ final class MenuModel {
         }
         listen(to: server)
         publish = await server.publishIfWanted()
+        // The phones hear this Mac is back, so one with a send waiting for it sends it now
+        Task { await server.announceAwake() }
         await refresh()
     }
 
@@ -192,6 +198,7 @@ final class MenuModel {
         target = await server.target()
         if isOpen { await server.markSeen() }
         received = await server.received()
+        waiting = await server.waiting()
         unseen = await server.unseen()
         if page == .addDevice {
             let phones = await server.phones()
@@ -212,13 +219,19 @@ final class MenuModel {
         lastSent = (what, device)
         settling?.cancel()
         sendState = .sending(nil)
-        let error = await server.send(what, to: device) { [weak self] fraction in
+        let result = await server.send(what, to: device) { [weak self] fraction in
             Task { @MainActor in
                 // A report that comes in after the end changes nothing
                 if case .sending = self?.sendState { self?.sendState = .sending(fraction) }
             }
         }
-        settle(error.map(SendState.failed) ?? .sent(device.name))
+        switch result {
+        case .sent: settle(.sent(device.name))
+        case .waiting:
+            settle(.waiting(device.name))
+            await refresh()   // its row
+        case .failed(let why): settle(.failed(why))
+        }
     }
 
     func retry() async {
@@ -290,6 +303,11 @@ final class MenuModel {
         return URL(filePath: path)
     }
 
+    func cancel(_ send: WaitingSend) async {
+        await server?.cancelWaiting(send.id)
+        await refresh()
+    }
+
     func remove(_ item: BoxItem) async {
         await server?.remove(id: item.id)
         await refresh()
@@ -323,5 +341,12 @@ final class MenuModel {
         guard let server, startError == nil else { return }
         publish = await server.publishState()
         forceSetup()
+    }
+
+    /// The Mac woke from sleep: Tailscale may have changed, and the phones hear it is back
+    func woke() async {
+        await checkPublished()
+        guard let server, startError == nil else { return }
+        Task { await server.announceAwake() }
     }
 }

@@ -32,9 +32,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         #endif
         status = StatusItem(model: model)
-        // Tailscale may have changed while the Mac slept; nothing else asks while the popover is closed
+        // Tailscale may have changed while the Mac slept, nothing else asks while the popover is closed; and the phones
+        // hear the Mac is back, so a send waiting for it goes
         NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.didWakeNotification, object: nil, queue: .main) {
-            [model] _ in Task { @MainActor in await model.checkPublished() }
+            [model] _ in Task { @MainActor in await model.woke() }
         }
         Task {
             await model.start()

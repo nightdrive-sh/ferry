@@ -68,10 +68,10 @@ import Testing
     @Test func leftForThePhone() async throws {
         let p = try await Pair.make()
         defer { Task { await p.server.stop() } }
-        #expect(await p.server.send(.text("hello", clip: false), to: iphone) == nil)
+        #expect(await p.server.send(.text("hello", clip: false), to: iphone) == .sent)
         let pdf = tempFolder().appending(path: "Lasku & kuitti #2.pdf")
         try Data("pdf bytes".utf8).write(to: pdf)
-        #expect(await p.server.send(.files([pdf]), to: iphone) == nil)
+        #expect(await p.server.send(.files([pdf]), to: iphone) == .sent)
         let items = try await p.client.items(p.machine).items
         #expect(items.count == 2)
         #expect(items.allSatisfy { $0.to == .phone })

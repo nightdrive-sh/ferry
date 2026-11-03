@@ -129,25 +129,59 @@ public actor Pusher {
         }
     }
 
+    /// The silent "awake" push (docs/protocol.md › Notifications): only to the app's direct subscriptions, since a web
+    /// page would have to show a notification for it. Whether a push service took it; nil with no app to tell.
+    public func wake(title: String) async -> Bool? {
+        let targets = subs.filter { $0.direct == true }
+        guard !targets.isEmpty else { return nil }
+        let content = (try? JSONSerialization.data(withJSONObject: ["title": String(title.prefix(200)), "body": "",
+                                                                    "machine": "", "awake": true])) ?? Data()
+        var took = false
+        var gone: [String] = []
+        for sub in targets {
+            switch await send(content, to: sub, ttl: Self.wakeTTL, urgency: "very-low") {
+            case .gone: gone.append(sub.endpoint)
+            case .took: took = true
+            case .failed: break
+            }
+        }
+        if !gone.isEmpty {
+            subs.removeAll { gone.contains($0.endpoint) }
+            saveSubs()
+        }
+        return took
+    }
+
+    /// Seconds a push service keeps the "awake" push for a phone that is off: later, it says nothing new
+    static let wakeTTL = 3600
+
+    private enum Sent { case took, gone, failed }
+
     /// The endpoint when the push service says the subscription is gone
     private func send(_ content: Data, to sub: Subscription) async -> String? {
-        guard let url = URL(string: sub.endpoint) else { return sub.endpoint }
+        await send(content, to: sub, ttl: config.pushTTL, urgency: "high") == .gone ? sub.endpoint : nil
+    }
+
+    private func send(_ content: Data, to sub: Subscription, ttl: Int, urgency: String) async -> Sent {
+        guard let url = URL(string: sub.endpoint) else { return .gone }
         do {
             var req = URLRequest(url: url, timeoutInterval: 10)
             req.httpMethod = "POST"
             req.httpBody = try WebPush.encrypt(content, p256dh: sub.keys.p256dh, auth: sub.keys.auth)
             req.setValue(try key.authorization(for: url, now: Date(), contact: config.pushContact), forHTTPHeaderField: "Authorization")
-            req.setValue(String(config.pushTTL), forHTTPHeaderField: "TTL")
+            req.setValue(String(ttl), forHTTPHeaderField: "TTL")
             req.setValue("aes128gcm", forHTTPHeaderField: "Content-Encoding")
             req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-            req.setValue("high", forHTTPHeaderField: "Urgency")
+            req.setValue(urgency, forHTTPHeaderField: "Urgency")
             let (status, _) = try await outbound.data(req)
-            if status == 404 || status == 410 { return sub.endpoint }
+            if status == 404 || status == 410 { return .gone }
             if status >= 300 { Self.log.error("push to \(url.host() ?? "", privacy: .public): \(status)") }
+            // A busy push service (429) is there all the same: no use trying again at once
+            return status < 300 || status == 429 ? .took : .failed
         } catch {
             Self.log.error("push failed: \(error.localizedDescription, privacy: .public)")
         }
-        return nil
+        return .failed
     }
 
     /// Asks the computer at via to notify its phones (or the one named device) about this one

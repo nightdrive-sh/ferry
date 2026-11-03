@@ -20,6 +20,8 @@ public actor FerryServer {
     let pusher: Pusher
     let found: Found
     let forgotten: Forgotten
+    /// Sends to a computer that was asleep or off, until it is back
+    let outbox: Outbox
     /// The phones that have used Ferry here: the device list's (not `phones()`, the count of subscriptions)
     let usedBy: Phones
     /// Yields when Received changes (something lands, or is removed, cleared or pruned), for the menu bar icon's count
@@ -34,6 +36,10 @@ public actor FerryServer {
     /// Started and not yet through its first look for the other computers: then it brings itself back if it is
     /// forgotten (docs/protocol.md › Forgetting a device)
     private var comingBack = false
+    /// When a computer online but not taking its waiting sends was last tried, by its short name (FerryServer+Waiting)
+    var missedAt: [String: TimeInterval] = [:]
+    /// An "awake" push is being tried: a wake during launch's doesn't start a second
+    var announcing = false
 
     public init(config: ServerConfig, system: any FerrySystem, tailscale: any TailscaleCLI,
                 outbound: any Outbound = URLSessionOutbound(),
@@ -51,6 +57,7 @@ public actor FerryServer {
         found = Found(config: config, probe: { [config, outbound] host in await Found.probe(host: host, config: config, outbound: outbound) },
                       clock: clock)
         forgotten = Forgotten(state: config.state, clock: clock)
+        outbox = Outbox(state: config.state, clock: clock)
         usedBy = Phones(state: config.state)
     }
 
@@ -82,6 +89,13 @@ public actor FerryServer {
                 while !Task.isCancelled {
                     _ = await self?.machines()
                     try? await Task.sleep(for: .seconds(every))
+                }
+            },
+            // While anything waits, the sends whose computer is back go (FerryServer+Waiting)
+            Task { [weak self] in
+                while !Task.isCancelled {
+                    await self?.deliverWaiting()
+                    try? await Task.sleep(for: .seconds(Self.waitingEvery))
                 }
             },
         ]
@@ -117,7 +131,7 @@ public actor FerryServer {
     }
 
     /// Whether tailscale serve publishes Ferry now, whatever its user chose
-    private func served() async -> PublishState {
+    func served() async -> PublishState {
         do {
             let st = TailnetView(statusJSON: try await tailscale.status())
             guard st.running else { return .tailscaleOff }
@@ -225,43 +239,44 @@ public actor FerryServer {
 
     // MARK: Sending
 
-    /// Sends to one device: into the box for a phone, with a notification, or straight to another computer. nil when
-    /// it went, else why not. progress gets the fraction of the files' bytes sent to a computer; anything else reports
-    /// only its end.
+    /// Sends to one device: into the box for a phone, with a notification, or straight to another computer, where a
+    /// send to one that is asleep or off waits until it is back (docs/protocol.md › Clients › Sends that wait).
+    /// progress gets the fraction of the files' bytes sent to a computer; anything else reports only its end.
     public func send(_ what: Outgoing, to device: Device, progress: @escaping @Sendable (Double) -> Void = { _ in }) async
-        -> String? {
+        -> SendResult {
         switch what {
         case .files(let urls, let clip):
             let files = Devices.files(urls)
-            guard !files.isEmpty else { return "No files to send there" }
+            guard !files.isEmpty else { return .failed("No files to send there") }
             if device.kind == .computer { return await deliver(files: files, clip: clip, to: device, progress: progress) }
-            let error = await leave(files: files, for: device)
-            if error == nil { progress(1) }
-            return error
+            let result = await leave(files: files, for: device)
+            if result == .sent { progress(1) }
+            return result
         case .text(let text, let clip):
-            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return "Nothing to send" }
+            guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return .failed("Nothing to send") }
             let cut = String(text.prefix(config.maxText))
-            let error = device.kind == .computer ? await deliver(text: cut, clip: clip, to: device) : await leave(text: cut, for: device)
-            if error == nil { progress(1) }
-            return error
+            let result = device.kind == .computer ? await deliver(text: cut, clip: clip, to: device)
+                : await leave(text: cut, for: device)
+            if result == .sent { progress(1) }
+            return result
         }
     }
 
-    private func leave(text: String, for device: Device) async -> String? {
+    private func leave(text: String, for device: Device) async -> SendResult {
         let item = BoxItem(id: Box.newID(), to: "phone", kind: "text", time: clock(), text: text, for: device.id)
         await box.append([item])
         await notify(String(text.prefix(180)), item: item, device: device)
-        return nil
+        return .sent
     }
 
-    private func leave(files: [URL], for device: Device) async -> String? {
+    private func leave(files: [URL], for device: Device) async -> SendResult {
         var left: [BoxItem] = []
         for f in files {
-            guard let it = try? await box.leaveFile(f, for: device.id) else { return "Couldn't read \(f.lastPathComponent)" }
+            guard let it = try? await box.leaveFile(f, for: device.id) else { return .failed("Couldn't read \(f.lastPathComponent)") }
             left.append(it)
         }
         await notify(left.count == 1 ? left[0].name ?? "" : "\(left.count) files", item: left[0], device: device)
-        return nil
+        return .sent
     }
 
     private func notify(_ body: String, item: BoxItem, device: Device) async {
@@ -269,45 +284,49 @@ public actor FerryServer {
                           own: await address()?.absoluteString ?? "")
     }
 
-    private func deliver(text: String, clip: Bool, to device: Device) async -> String? {
-        guard let base = known.first(where: { $0.id == device.id }).flatMap({ URL(string: $0.url) }) else {
-            return "\(device.name) isn't running Ferry"
+    func base(of device: String) -> URL? {
+        known.first(where: { $0.id == device }).flatMap { URL(string: $0.url) }
+    }
+
+    private func deliver(text: String, clip: Bool, to device: Device) async -> SendResult {
+        guard let base = base(of: device.id) else { return .failed("\(device.name) isn't running Ferry") }
+        // One Tailscale has offline isn't tried: the try would only wait for its timeout
+        let result: Delivered = device.online ? await Delivery(outbound: outbound).text(text, clip: clip, to: base) : .missed
+        switch result {
+        case .sent: return .sent
+        case .refused(let said): return .failed("\(device.name) refused it: \(said)")
+        case .missed:
+            _ = await outbox.add(text: text, for: device)
+            return .waiting
         }
-        var req = URLRequest(url: base.appending(path: "api/text"), timeoutInterval: 30)
-        req.httpMethod = "POST"
-        req.setValue("1", forHTTPHeaderField: "X-Ferry")
-        req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        req.httpBody = try? JSONSerialization.data(withJSONObject: ["text": text, "clip": clip])
-        return answered(try? await outbound.data(req), device)
     }
 
     private func deliver(files: [URL], clip: Bool, to device: Device, progress: @escaping @Sendable (Double) -> Void) async
-        -> String? {
-        guard let base = known.first(where: { $0.id == device.id }).flatMap({ URL(string: $0.url) }) else {
-            return "\(device.name) isn't running Ferry"
-        }
+        -> SendResult {
+        guard let base = base(of: device.id) else { return .failed("\(device.name) isn't running Ferry") }
         // Each file counts by its size, so one big video isn't a quarter of the bar
         let sizes = files.map { Double((try? $0.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0) }
         let total = max(sizes.reduce(0, +), 1)
         var before = 0.0
-        for (f, size) in zip(files, sizes) {
-            // The iPhone app's own request, so a computer sees the Mac's uploads exactly as the phone's
-            var req = HTTPBackend.uploadRequest(base, name: f.lastPathComponent, type: MIME.type(forName: f.lastPathComponent),
-                                                clip: clip)
-            req.timeoutInterval = 30
+        for (i, (f, size)) in zip(files, sizes).enumerated() {
             let done = before
-            let sent = try? await outbound.upload(req, file: f) { p in progress((done + p * size) / total) }
-            if let error = answered(sent, device) { return error }
-            before += size
+            let result: Delivered = device.online
+                ? await Delivery(outbound: outbound).file(f, name: f.lastPathComponent, clip: clip, to: base) { p in
+                    progress((done + p * size) / total)
+                }
+                : .missed
+            switch result {
+            case .sent: before += size
+            case .refused(let said): return .failed("\(device.name) refused it: \(said)")
+            case .missed:
+                // The files it hasn't taken wait for it
+                guard await outbox.add(files: Array(files[i...]), for: device) != nil else {
+                    return .failed("Couldn't keep \(f.lastPathComponent) to send later")
+                }
+                return .waiting
+            }
         }
-        return nil
-    }
-
-    private func answered(_ result: (status: Int, body: Data)?, _ device: Device) -> String? {
-        guard let result, (200..<300).contains(result.status) else {
-            return "\(device.name) didn't answer: it's asleep, or Ferry is off there"
-        }
-        return nil
+        return .sent
     }
 
     // MARK: The menu
