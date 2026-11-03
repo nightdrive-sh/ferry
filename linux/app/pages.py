@@ -16,6 +16,7 @@ class PagesMixin:
         data = self.data
         step = self.step() if data else None
         items = look.received((data or {}).get("items") or [])
+        waiting = look.waiting((data or {}).get("waiting"))   # sends to a computer that is asleep, above the received
         main = self.page == "main"
 
         # The section's title
@@ -30,13 +31,14 @@ class PagesMixin:
         elif self.dragging:
             title = "DROP TO SEND"
         else:
-            title = "RECEIVED"
+            title = "WAITING" if waiting else "RECEIVED"   # the received ones get a heading of their own below
         self.section.set_label(title)
         self.back.set_visible(not main)
         # The back button's own padding is the bar's margin: its chevron where the section's title starts elsewhere
         self.title_bar.set_margin_start(8 if main else 0)
         clearing = main and not step and not self.dragging and bool(items)
-        self.clear_button.set_visible(clearing and not self.confirming)
+        # Clear is the received ones': under the sends that wait it sits on their heading, not beside WAITING
+        self.clear_button.set_visible(clearing and not self.confirming and not waiting)
         for w in (self.question, self.clear_cancel, self.clear_yes):
             w.set_visible(clearing and self.confirming)
         self.question.set_label(look.clear_question(len(items)))
@@ -55,8 +57,8 @@ class PagesMixin:
             self.show_step({"step": "not-published", "title": "Looking for Tailscale…", "text": ""}, spinner=True)
         elif step:
             self.show_step(step)
-        elif items:
-            self.fill_list(items)
+        elif items or waiting:
+            self.fill_list(waiting + ([look.RECEIVED_HEADING] if waiting and items else []) + items)
             self.stack.set_visible_child_name("list")
         else:
             self.stack.set_visible_child_name("empty")
@@ -95,8 +97,9 @@ class PagesMixin:
         self.clip.set_sensitive(not busy and not blocked)
         state = self.send_state
         self.clip_label.set_label({"idle": "Send Clipboard", "sending": "Sending…", "nothing": "Nothing on the clipboard",
-                                   "failed": "Try Again"}.get(state[0]) or f"Sent to {state[1]} ✓")
-        self.clip_icon.set_visible(state[0] not in ("sent",))
+                                   "failed": "Try Again"}.get(state[0]) or
+                                  (f"Waiting for {state[1]}" if state[0] == "waiting" else f"Sent to {state[1]} ✓"))
+        self.clip_icon.set_visible(state[0] not in ("sent", "waiting"))
         self.clip_icon._icon = ("refresh-cw" if state[0] == "failed" else "clipboard-paste", "on_primary", 16, 2.0)
         self.clip_icon.set_from_paintable(ICONS.get(*self.clip_icon._icon))
         self.error.set_visible(state[0] == "failed")
@@ -164,19 +167,33 @@ class PagesMixin:
         ids = [i["id"] for i in items]
         if ids == [getattr(r, "item", {}).get("id") for r in self.list_rows()]:
             for item in items:   # only the ages move
-                self.rows[item["id"]][1].set_label(look.meta(item))
+                if item["id"] in self.rows:
+                    self.rows[item["id"]][1].set_label(look.meta(item))
             return
         while self.list.get_first_child():
             self.list.remove(self.list.get_first_child())
         self.rows = {}
         for item in items:
-            self.list.append(self.make_row(item))
+            self.list.append(self.heading_row(item) if item is look.RECEIVED_HEADING else self.make_row(item))
 
     def list_rows(self):
         child = self.list.get_first_child()
         while child:
             yield child
             child = child.get_next_sibling()
+
+    def heading_row(self, item):
+        """RECEIVED under the sends that wait, which have the page's title, with the received ones' Clear."""
+        row = Gtk.ListBoxRow(activatable=False, selectable=False)
+        row.item = item
+        bar = Gtk.Box(spacing=8, margin_top=10)
+        heading = label("RECEIVED", "section")
+        heading.set_halign(Gtk.Align.START)
+        heading.set_hexpand(True)
+        bar.append(heading)
+        bar.append(button("Clear", None, "flat", on=lambda: self.ask_clear(True)))
+        row.set_child(bar)
+        return row
 
     def make_row(self, item):
         row = Gtk.ListBoxRow()
@@ -194,7 +211,7 @@ class PagesMixin:
         icon.set_size_request(36, 36)
         tile.append(icon)
         box.append(tile)
-        if look.is_image(item) and item.get("path"):
+        if look.is_image(item) and item.get("path") and not item.get("waiting"):
             self.thumbnail(item, tile)
 
         text = Gtk.Box(orientation=Gtk.Orientation.VERTICAL, spacing=2, valign=Gtk.Align.CENTER)
@@ -211,13 +228,20 @@ class PagesMixin:
         text.append(meta)
         box.append(text)
 
-        action = button(None, "external-link" if is_file else "copy", "small-circle",
-                        tooltip="Open" if is_file else "Copy",
-                        on=lambda: self.open_file(item) if is_file else self.copy(item, row))
+        if item.get("waiting"):   # it isn't here to open or copy, only to cancel
+            row.set_activatable(False)
+            action = button(None, "x", "small-circle", tooltip="Cancel", on=lambda: self.cancel_waiting(item))
+        else:
+            action = button(None, "external-link" if is_file else "copy", "small-circle",
+                            tooltip="Open" if is_file else "Copy",
+                            on=lambda: self.open_file(item) if is_file else self.copy(item, row))
         action.set_valign(Gtk.Align.CENTER)
         box.append(action)
         row.set_child(box)
         row.set_tooltip_text(None if is_file else (item.get("text") or "")[:400])
+        self.rows[item["id"]] = (row, meta)
+        if item.get("waiting"):
+            return row
 
         menu_click = Gtk.GestureClick(button=Gdk.BUTTON_SECONDARY)
         menu_click.connect("pressed", lambda g, _n, x, y: self.row_menu(row, item, x, y))
@@ -227,8 +251,6 @@ class PagesMixin:
         drag.connect("prepare", lambda *_: self.drag_out(item))
         drag.connect("drag-begin", lambda src, _d: src.set_icon(Gtk.WidgetPaintable.new(tile), 18, 18))
         row.add_controller(drag)
-
-        self.rows[item["id"]] = (row, meta)
         return row
 
     def thumbnail(self, item, tile):

@@ -5,8 +5,8 @@
     ferry get [N]                 an item (1, the newest received, by default): a text printed (to a terminal, its
                                   control characters as escapes), a file copied here
     ferry open | copy N           a file opened, a text to the clipboard
-    ferry rm N…                   items out of the box (a received file stays in Downloads)
-    ferry clear [received|sent]   everything, or one direction, out of the box
+    ferry rm N…                   items out of the box (a received file stays in Downloads), or waiting sends cancelled
+    ferry clear [received|sent|waiting]   everything, or one direction, out of the box; waiting: the sends cancelled
     ferry url | qr                the phone's address (https://<this machine>.<tailnet>.ts.net/ferry/), or Add Device's QR code
     ferry status                  on, or off and why (the server not running)
     ferry enable | disable        the server on/off (ferry.service) and its address on the tailnet
@@ -27,6 +27,7 @@
     ferry seen                    marks what came from the phone as seen (the bar's count goes)
     N is a number from `ferry list`, or an item's id (the menu uses those: numbers change as the box does).
     send, add, pick, text and send-clipboard take --to DEVICE (its name in `ferry devices`) for one send, else the target.
+    A send to a computer that is asleep or off waits here until it is back, 3 days at most (`ferry list` shows it).
 
 How it works: ferry/__init__.py."""
 import json
@@ -35,8 +36,8 @@ import shutil
 import subprocess
 import sys
 
-from . import (computers, config, controls, desktop, forget, install, notices, push, server, store, tailnet, terminal,
-               updates)
+from . import (computers, config, controls, desktop, forget, install, notices, outbox, push, server, store, tailnet,
+               terminal, updates)
 
 
 def listing():
@@ -50,7 +51,8 @@ def listing():
     have = bool(shutil.which("tailscale"))
     served = have and bool(st) and tailnet.serving()
     return {"on": on, "tailscale": st.get("BackendState") == "Running", "url": tailnet.url(st), "serving": served,
-            "setup": tailnet.setup_step(st, have, on, served), "push": len(subs), "items": out, "devices": devs,
+            "setup": tailnet.setup_step(st, have, on, served), "push": len(subs), "items": out,
+            "waiting": [outbox.public(e) for e in outbox.listed()], "devices": devs,
             "target": t["id"] if t else "", "sent": computers.last_sent(), "version": config.VERSION, "update": updates.available_update()}
 
 
@@ -71,6 +73,16 @@ def qr(svg):
     subprocess.run(["qrencode", "-t", "SVG", "-m", "2", "--foreground=000000", "--background=FFFFFF", "-o", config.QR,
                     add_link(u)], check=True)
     print(config.QR)
+    return 0
+
+
+def quiet(sent, dev):
+    """A send from the menu or a drop, where nobody sees stderr: one that failed or waits says so in a notification."""
+    state, detail = sent
+    if state == "failed":
+        return terminal.failed(detail)
+    if state == "waiting":
+        notices.notify(f"Waiting for {dev['name']}", f"{detail} goes when {dev['name']} is back ({terminal.waits()})")
     return 0
 
 
@@ -128,30 +140,27 @@ def main():
         if cmd == "add":
             if not rest:
                 return 1
-            err = computers.deliver(dev, files=rest)
-            return terminal.failed(err) if err else 0
+            return quiet(computers.send(dev, files=rest), dev)
         if cmd == "pick":
             paths = terminal.pick_files(f"Send to {dev['name']} with Ferry")
             if paths is None:
                 return terminal.failed("No file dialog here (zenity or kdialog): ferry send FILE sends files")
             if not paths:
                 return 1
-            err = computers.deliver(dev, files=paths)
+            sent = computers.send(dev, files=paths)
             # A menu that closed for the dialog may open again to show what was just sent
             desktop.hook("picked")
-            return terminal.failed(err) if err else 0
+            return quiet(sent, dev)
         if cmd == "text":
             if not " ".join(rest).strip():
                 return 1
-            err = computers.deliver(dev, text=" ".join(rest))
-            return terminal.failed(err) if err else 0
+            return quiet(computers.send(dev, text=" ".join(rest)), dev)
         text = desktop.paste_text()
         if not text.strip():
             notices.notify("The clipboard has no text", "Copy a text or a link first")
             computers.mark_sent("", "", "The clipboard has no text")
             return 1
-        err = computers.deliver(dev, text=text, clip=True)
-        return terminal.failed(err) if err else 0
+        return quiet(computers.send(dev, text=text, clip=True), dev)
     elif cmd == "devices":
         devs = computers.devices()
         t = computers.target(devs)
@@ -186,14 +195,18 @@ def main():
             return 1
         return terminal.get(it)
     elif cmd in ("copy", "open", "rm", "remove") and len(a) > 1:
-        items = store.numbered()
+        items = terminal.numbered()
         found = [store.item(r, items) for r in a[1:]]   # all first: numbers would change as items go
         if None in found:
             print(f"No item {a[1 + found.index(None)]}: see ferry list", file=sys.stderr)
             return 1
         for it in found:
+            if it.get("waiting") and cmd not in ("rm", "remove"):
+                print(f"That one waits to be sent to {it['name']}: ferry rm {a[1 + found.index(it)]} cancels it",
+                      file=sys.stderr)
+                return 1
             if cmd in ("rm", "remove"):
-                store.remove(it["id"])
+                (outbox.cancel if it.get("waiting") else store.remove)(it["id"])
             elif cmd == "copy" and it.get("kind") == "text":
                 if not desktop.copy_text(it["text"], sensitive=store.secret(it)):
                     print("No clipboard to copy to: this needs a desktop", file=sys.stderr)
@@ -208,10 +221,14 @@ def main():
         if cmd in ("rm", "remove"):
             desktop.changed()
     elif cmd == "clear" and len(a) <= 2:
-        to = {"": None, "received": "computer", "sent": "phone"}.get(a[1] if len(a) > 1 else "", "?")
+        to = {"": None, "received": "computer", "sent": "phone", "waiting": "-"}.get(a[1] if len(a) > 1 else "", "?")
         if to == "?":
-            print("ferry clear [received|sent]", file=sys.stderr)
+            print("ferry clear [received|sent|waiting]", file=sys.stderr)
             return 1
+        if to in (None, "-"):
+            outbox.clear()
+        if to == "-":
+            return 0
         with store.box(write=True) as items:
             for it in [i for i in items if to is None or i.get("to") == to]:
                 store.drop_file(it)

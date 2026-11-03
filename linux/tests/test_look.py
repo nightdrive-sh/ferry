@@ -20,6 +20,14 @@ class Words(unittest.TestCase):
         self.assertEqual(look.meta(item, now=1000 + 720), "5.7 MB · 12 min · iphone")
         self.assertEqual(look.meta({"kind": "text", "time": 50}, now=60), "now")
 
+    def test_a_send_that_waits_says_for_whom_and_how_long(self):
+        [w] = look.waiting([{"id": "a", "kind": "file", "size": 42_200, "deviceName": "Studio", "time": 0,
+                             "until": 3 * 86400}])
+        self.assertEqual(look.meta(w, now=10), "42.2 KB · Waiting for Studio · 3 d left")
+        self.assertEqual(look.item_icon(w), "clock")
+        self.assertEqual(look.left(47 * 3600 + 59), "47 h left")
+        self.assertEqual(look.left(30), "1 min left")
+
     def test_sizes_and_ages_as_the_apps_say_them(self):
         self.assertEqual(look.human(240), "240 B")
         self.assertEqual(look.human(1_234), "1.2 KB")

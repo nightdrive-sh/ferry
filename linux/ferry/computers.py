@@ -7,10 +7,11 @@ import os
 import sys
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 
-from . import config, desktop, forget, push, store, tailnet, terminal
+from . import config, desktop, forget, outbox, push, store, tailnet, terminal
 
 
 def probe(host):
@@ -133,13 +134,14 @@ def set_target(device_id):
         f.write(device_id + "\n")
 
 
-def mark_sent(what, to, error=""):
+def mark_sent(what, to, error="", waiting=False):
     """What was just sent and to whom, for the menu's "Sent" (it shows the newest for a few seconds), or why a send
-    didn't go (error), so the menu's button stops waiting."""
+    didn't go (error), so the menu's button stops waiting. waiting: it waits for its computer (outbox)."""
     os.makedirs(config.STATE, mode=0o700, exist_ok=True)
     tmp = os.path.join(config.STATE, "sent.json.tmp")
     with open(tmp, "w") as f:
-        json.dump(dict({"time": time.time(), "what": what, "to": to}, **({"error": error} if error else {})), f,
+        json.dump(dict({"time": time.time(), "what": what, "to": to}, **({"error": error} if error else {}),
+                       **({"waiting": True} if waiting else {})), f,
                   ensure_ascii=False)
     os.replace(tmp, os.path.join(config.STATE, "sent.json"))
     desktop.changed()
@@ -165,41 +167,67 @@ def post(u, data, headers):
         return r.read()
 
 
+def post_text(base, text, clip=False):
+    post(base + "api/text", json.dumps({"text": text[:config.MAX_TEXT], "clip": clip}, ensure_ascii=False).encode(),
+         {"Content-Type": "application/json"})
+
+
+def post_file(base, path, name=None, kind=None, clip=False):
+    kind = kind or mimetypes.guess_type(path)[0] or "application/octet-stream"
+    q = urllib.parse.urlencode(dict({"name": name or os.path.basename(path), "type": kind},
+                                    **({"clip": "1"} if clip else {})))
+    with open(path, "rb") as f:
+        post(base + "api/upload?" + q, f, {"Content-Type": "application/octet-stream",
+                                           "Content-Length": str(os.path.getsize(path))})
+
+
 def deliver(dev, files=None, text=None, clip=False):
     """Sends files or a text to one device (from devices()): into the box for a phone, straight to another computer.
     clip: it is the clipboard, which another computer puts on its own (a text, or an image file). Returns "" or why it
-    failed."""
+    failed; a send that waits for its computer counts as sent (send() tells them apart)."""
+    state, detail = send(dev, files=files, text=text, clip=clip)
+    return detail if state == "failed" else ""
+
+
+def send(dev, files=None, text=None, clip=False):
+    """deliver(), saying how it went: ("sent", what), ("waiting", what): the computer is asleep or off, and the send
+    waits here until it is back (outbox), or ("failed", why)."""
     if files is not None:
         files = store.file_paths(files)
         if not files:
-            return "No files to send there"
+            return "failed", "No files to send there"
         what = os.path.basename(files[0]) if len(files) == 1 else f"{len(files)} files"
     else:
         if not (text or "").strip():
-            return "Nothing to send"
+            return "failed", "Nothing to send"
         what = terminal.oneline(text, 60)
     if dev["kind"] != "computer":
         if files is not None:
             store.add_files(files, dev["id"])
         else:
             store.add_text(text, dev["id"])
-    else:
-        base = machine_url(dev["id"])
-        if not base:
-            return f"{dev['name']} isn't running Ferry"
-        try:
-            if files is None:
-                post(base + "api/text", json.dumps({"text": text[:config.MAX_TEXT], "clip": clip}, ensure_ascii=False).encode(),
-                     {"Content-Type": "application/json"})
-            for path in files or []:
-                kind = mimetypes.guess_type(path)[0] or "application/octet-stream"
-                q = urllib.parse.urlencode(dict({"name": os.path.basename(path), "type": kind},
-                                                **({"clip": "1"} if clip else {})))
-                with open(path, "rb") as f:
-                    post(base + "api/upload?" + q, f, {"Content-Type": "application/octet-stream",
-                                                       "Content-Length": str(os.path.getsize(path))})
-        except (OSError, ValueError) as e:
-            print(f"send to {base} failed: {e!r}", file=sys.stderr)
-            return f"{dev['name']} didn't answer: it's asleep, or Ferry is off there"
+        mark_sent(what, dev["name"])
+        return "sent", what
+    base = machine_url(dev["id"])
+    if not base:
+        return "failed", f"{dev['name']} isn't running Ferry"
+    try:
+        # One Tailscale has offline isn't tried: the try would only wait for its timeout
+        if not dev.get("online", True):
+            raise ConnectionError("offline")
+        if files is None:
+            post_text(base, text, clip)
+        while files:
+            post_file(base, files[0], clip=clip)
+            files = files[1:]
+    except urllib.error.HTTPError as e:
+        print(f"send to {base} refused: {e.code}", file=sys.stderr)
+        return "failed", f"{dev['name']} refused it: {e.read()[:200].decode(errors='replace')}"
+    except (OSError, ValueError) as e:
+        if dev.get("online", True):
+            print(f"send to {base} failed: {e!r}, so it waits", file=sys.stderr)
+        outbox.add(dev, files=files, text=text)   # the files it hasn't taken yet
+        mark_sent(what, dev["name"], waiting=True)
+        return "waiting", what
     mark_sent(what, dev["name"])
-    return ""
+    return "sent", what

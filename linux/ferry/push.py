@@ -16,6 +16,7 @@ import urllib.request
 
 from . import config, forget, store, tailnet
 
+WAKE_TTL = 3600   # seconds a push service keeps the "awake" push for a phone that is off: later, it says nothing new
 
 # python3-cryptography does the elliptic curves and AES-GCM; the rest (aes128gcm framing, VAPID's JWT) is small enough to
 # write here. Fedora has no pywebpush. Without the module everything else still works, only without notifications.
@@ -209,27 +210,49 @@ def push_all(title, body, machine="", item=None, device=""):
                 threading.Thread(target=relay_push, args=(via, title, body, own, device), daemon=True).start()
     key = vapid_key()
     subs = recipients(subscriptions(), bool(machine), device) if key else []
-    gone = []
-    content = payload(title, body, machine, item)
+    send(subs, payload(title, body, machine, item), key, config.KEEP_DAYS * 86400, "high")
+    for t in threading.enumerate():   # a command waits for its relays before it exits
+        if t.name == "relay":
+            t.join(10)
+
+
+def send(subs, content, key, ttl, urgency):
+    """content, encrypted for each of subs, to its push service. A subscription the service no longer knows (404/410)
+    goes. Whether any took it."""
+    gone, took = [], False
     for sub in subs:
         try:
             data = encrypt(content, sub["keys"]["p256dh"], sub["keys"]["auth"])
             req = urllib.request.Request(sub["endpoint"], data, method="POST", headers={
-                "Authorization": vapid_auth(key, sub["endpoint"]), "TTL": str(config.KEEP_DAYS * 86400),
-                "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", "Urgency": "high"})
+                "Authorization": vapid_auth(key, sub["endpoint"]), "TTL": str(ttl),
+                "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", "Urgency": urgency})
             urllib.request.urlopen(req, timeout=10).read()
+            took = True
         except urllib.error.HTTPError as e:
             print(f"push to {urllib.parse.urlsplit(sub['endpoint']).netloc}: {e.code} {e.read()[:200]!r}",
                   file=sys.stderr)
             if e.code in (404, 410):
                 gone.append(sub["endpoint"])
+            took = took or e.code == 429   # the service is there, only busy: no use trying again at once
         except (OSError, KeyError, ValueError) as e:
             print(f"push failed: {e!r}", file=sys.stderr)
     if gone:
         subscriptions(lambda s: s.__setitem__(slice(None), [x for x in s if x["endpoint"] not in gone]))
-    for t in threading.enumerate():   # a command waits for its relays before it exits
-        if t.name == "relay":
-            t.join(10)
+    return took
+
+
+def wake():
+    """The silent "awake" push (docs/protocol.md › Sends that wait): this computer is reachable again, so an app with
+    a send waiting for it sends it now, from the background. Only the app's direct subscriptions get it: a web page
+    would have to show a notification for it. Whether a push service took it (False: no network yet), None when
+    there's no app to tell."""
+    key = vapid_key()
+    subs = [s for s in subscriptions() if s.get("direct")] if key else []
+    if not subs:
+        return None
+    content = json.dumps({"title": config.alias()[:200], "body": "", "machine": "", "awake": True},
+                         ensure_ascii=False).encode()
+    return send(subs, content, key, WAKE_TTL, "very-low")
 
 
 def relay_push(via, title, body, own, device=""):

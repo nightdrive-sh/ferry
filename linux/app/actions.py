@@ -10,7 +10,7 @@ import time
 from gi.repository import Gdk, Gio, GLib, Gtk
 
 import look
-from ferry import computers, config, desktop, install, store, tailnet, updates
+from ferry import computers, config, desktop, install, outbox, store, tailnet, updates
 from widgets import background, SETTLE, UPDATE_EVERY
 
 
@@ -96,6 +96,9 @@ class ActionsMixin:
             Gio.AppInfo.launch_default_for_uri(uri, None)
         except GLib.Error:
             background(lambda: subprocess.run(["xdg-open", uri], env=desktop.desktop_env()))
+
+    def cancel_waiting(self, item):
+        background(lambda: outbox.cancel(item["id"]), lambda _: self.refresh())
 
     def remove(self, item):
         background(lambda: (store.remove(item["id"]), desktop.changed()), lambda _: self.refresh())
@@ -242,10 +245,11 @@ class ActionsMixin:
 
         def work():
             if kind == "text":
-                return computers.deliver(device, text=payload, clip=clip)
-            return computers.deliver(device, files=payload, clip=clip)
-        background(work, lambda err: self.settle(("failed", err) if err else ("sent", device["name"])) if err is not None
-                   else self.settle(("failed", "Ferry couldn't send that")))
+                return computers.send(device, text=payload, clip=clip)
+            return computers.send(device, files=payload, clip=clip)
+        # A send to a computer that is asleep waits for it (outbox): it counts as gone, and its row says for whom
+        background(work, lambda sent: self.settle((sent[0], sent[1] if sent[0] == "failed" else device["name"]))
+                   if sent is not None else self.settle(("failed", "Ferry couldn't send that")))
 
     def settle(self, state):
         """A result shows for a moment; a failure stays until the next send, with Try Again."""

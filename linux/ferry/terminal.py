@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-from . import computers, config, controls, desktop, notices, store, tailnet
+from . import computers, config, controls, desktop, notices, outbox, store, tailnet
 
 
 def ago(t):
@@ -23,21 +23,37 @@ def oneline(text, room):
     return fit(controls.shown(" ".join(text.split())), room)
 
 
+def waits():
+    """How long a send waits for its computer, as the commands say it."""
+    return f"{outbox.WAIT // 86400} days at most"
+
+
+def numbered():
+    """What `ferry list` numbers: the box (store.numbered()), then the sends waiting for their computer."""
+    return store.numbered() + [dict(e, waiting=True) for e in outbox.listed()]
+
+
 def print_list():
-    items = store.numbered()
+    items = numbered()
     if not items:
         print("The box is empty")
         return
     width, pad, heading = shutil.get_terminal_size().columns, len(str(len(items))), ""
     for n, it in enumerate(items, 1):
-        h = "Received" if it.get("to") == "computer" else "Sent, waiting to be picked up"
+        h = "Received" if it.get("to") == "computer" else \
+            "Waiting for a computer that is asleep or off" if it.get("waiting") else "Sent, waiting to be picked up"
         if h != heading:
             print(("\n" if heading else "") + h)
             heading = h
         head = f"  {n:>{pad}}  {ago(it.get('time', 0)):<10}  "
         who = f"  · {controls.shown(it['from'])}" if it.get("from") else \
-            f"  · for {controls.shown(it['for'])}" if it.get("for") else ""
+            f"  · for {controls.shown(it['for'])}" if it.get("for") else \
+            f"  · to {controls.shown(it['name'])}" if it.get("waiting") else ""
         room = max(width - len(head) - len(who), 20)
+        if it.get("waiting") and it.get("kind") == "file":
+            size = sum(f.get("size", 0) for f in it.get("files") or [])
+            print(head + fit(f"{controls.shown(outbox.what(it))}  {config.human(size)}", room) + who)
+            continue
         name = controls.shown(it.get("name", ""))
         what = f"{name}  {config.human(it.get('size', 0))}" if it.get("kind") == "file" else \
             '"' + oneline(it.get("text", ""), room - 2) + '"'
@@ -78,22 +94,26 @@ def send(args, dev):
         if not text.strip():
             print("Nothing to send: " + ("the input is empty" if piped else "the clipboard has no text"), file=sys.stderr)
             return 1
-        err, what = computers.deliver(dev, text=text), f'"{oneline(text, 60)}"'
+        err, what = computers.send(dev, text=text), f'"{oneline(text, 60)}"'
     elif any(os.path.exists(p) for p in args):
         missing = [p for p in args if not os.path.exists(p)]
         if missing:
             print(f"No such file: {missing[0]} (to send a text with a file's name, pipe it in)", file=sys.stderr)
             return 1
         files = store.file_paths(args)
-        err = computers.deliver(dev, files=args)
+        err = computers.send(dev, files=args)
         what = f"{os.path.basename(files[0]) if len(files) == 1 else f'{len(files)} files'}" + \
             (f" ({config.human(sum(os.path.getsize(f) for f in files))})" if files else "")
     else:
         text = " ".join(args)
-        err, what = computers.deliver(dev, text=text), f'"{oneline(text, 60)}"'
-    if err:
-        print(err, file=sys.stderr)
+        err, what = computers.send(dev, text=text), f'"{oneline(text, 60)}"'
+    state, detail = err
+    if state == "failed":
+        print(detail, file=sys.stderr)
         return 1
+    if state == "waiting":
+        print(f"{dev['name']} is asleep or off: {what} waits here until it is back ({waits()})", flush=True)
+        return 0
     print(f"Sent {what} to {dev['name']}", flush=True)
     st = tailnet.status()
     if st != "on" and dev["kind"] != "computer":      # off, or off with why and what turns it on

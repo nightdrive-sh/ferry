@@ -153,8 +153,9 @@ class App(Gtk.Application):
             if not dev:
                 notices.notify("Couldn't send", "No device to send to: add one with Add Device")
                 return
-            err = computers.deliver(dev, text=text, clip=True)
-            notices.notify("Couldn't send" if err else f"Sent to {dev['name']}", err or look.oneline(text)[:120])
+            state, detail = computers.send(dev, text=text, clip=True)
+            title = {"failed": "Couldn't send", "waiting": f"Waiting for {dev['name']}"}.get(state, f"Sent to {dev['name']}")
+            notices.notify(title, detail if state == "failed" else look.oneline(text)[:120])
         background(work)
 
     # MARK: The tray

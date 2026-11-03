@@ -96,6 +96,8 @@ ICONS = {
     "trash-2": '<path d="M10 11v6m4-6v6m5-11v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 '
                '0 1 2 2v2"/>',
     "check": '<path d="M20 6L9 17l-5-5"/>',
+    "clock": '<circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/>',
+    "x": '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
 }
 
 # Each setup step's icon (bin/ferry's setup_step())
@@ -303,10 +305,24 @@ def age(seconds):
     return f"{int(seconds // 86400)} d"
 
 
+def left(seconds):
+    """How long a waiting send has before it is dropped: "3 d left", "47 h left", "12 min left"."""
+    if seconds >= 2 * 86400:   # rounded: a send just made has "3 d left", not 2
+        return f"{round(seconds / 86400)} d left"
+    if seconds >= 3600:
+        return f"{int(seconds // 3600)} h left"
+    return f"{max(int(seconds // 60), 1)} min left"
+
+
 def meta(item, now=None):
-    """The line under an item: size · age · the device it came from."""
+    """The line under an item: size · age · the device it came from; for a send that waits, whom it waits for and how
+    long it has."""
     now = time.time() if now is None else now
     parts = []
+    if item.get("waiting"):
+        if item.get("kind") == "file":
+            parts.append(human(item.get("size") or 0))
+        return " · ".join(parts + [f"Waiting for {item.get('deviceName', '')}", left(item.get("until", now) - now)])
     if item.get("kind") == "file" and item.get("size") is not None:
         parts.append(human(item["size"]))
     parts.append(age(now - item.get("time", now)))
@@ -338,6 +354,8 @@ def is_image(item):
 
 
 def item_icon(item):
+    if item.get("waiting"):
+        return "clock"
     if item.get("kind") == "file":
         return "image" if is_image(item) else "file"
     return "link" if link(item.get("text")) else "text"
@@ -369,6 +387,15 @@ def what(paths):
 def received(items):
     """The box's items from the other devices, newest first."""
     return sorted((i for i in items if i.get("to") == "computer"), key=lambda i: i.get("time", 0), reverse=True)
+
+
+RECEIVED_HEADING = {"id": "-received", "heading": True}   # the list's row between the waiting and the received
+
+
+def waiting(sends):
+    """The sends waiting for their computer (`ferry list --json`'s waiting), as rows above the received ones, newest
+    first."""
+    return sorted((dict(w, waiting=True) for w in sends or []), key=lambda w: w.get("time", 0), reverse=True)
 
 
 def clear_question(n):

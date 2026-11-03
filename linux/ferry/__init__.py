@@ -13,7 +13,9 @@ cross-site request would need a CORS preflight, which isn't answered).
 Every send goes to one device. For a phone it waits in this computer's box, marked for that phone ("for"): only that
 phone's page lists it (the page asks every computer, and each answers with what is for the device asking) and only it
 gets the notification. For another computer it goes straight there, as the phone's page sends: it lands in that
-computer's box and menu, and Send Clipboard onto its clipboard. The server keeps the owner's computers that answer as
+computer's box and menu, and Send Clipboard onto its clipboard. One that is asleep or off gets it once it is back: the
+send waits here, 3 days at most (outbox.py), and when this computer starts or wakes it tells the iPhone apps it is back
+with a silent push, so theirs go too (wake.py). The server keeps the owner's computers that answer as
 Ferry in STATE/machines.json for the commands and the menu (`ferry devices`).
 
 Several computers: each runs its own Ferry, and the page shows them as one. It asks its own computer which of the owner's
@@ -28,8 +30,8 @@ Ferry trusts the computer's own users, as a single-user desktop does.
 
 Kept in STATE: items.json (the box), the files left for the phone (files/), the VAPID key for Web Push (made on the first
 run; python3-cryptography), the phone's push subscriptions, the phones that have used Ferry here (phones.json: the
-device list shows only those) and the devices the owner forgot (forgotten.json, which reaches the other computers
-through api/ping). Files from the phone go to Downloads. Items go after
+device list shows only those), the devices the owner forgot (forgotten.json, which reaches the other computers
+through api/ping) and the sends waiting for a computer (outbox.json, their files in outbox/). Files from the phone go to Downloads. Items go after
 KEEP_DAYS days, a code or a password after SECRET_KEEP or once copied; removing one from the box doesn't delete a file in
 Downloads. Nightdrive's Ferry plugin, where this
 server came from, kept the same state in OLD_STATE: the first run moves it here (migrate()).

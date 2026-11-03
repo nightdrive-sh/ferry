@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
 
-from . import api, computers, config, desktop, forget, idle, notices, push, store, tailnet
+from . import api, computers, config, desktop, forget, idle, notices, outbox, push, store, tailnet, wake
 
 
 STATIC = {"/manifest.webmanifest": "application/manifest+json", "/sw.js": "text/javascript",
@@ -216,6 +216,8 @@ def run():
     threading.Thread(target=look_around, args=(app,), daemon=True).start()
     threading.Thread(target=idle.WAYLAND_IDLE.run, daemon=True).start()
     threading.Thread(target=keep_warm, daemon=True).start()
+    threading.Thread(target=outbox.run, daemon=True).start()   # sends to a computer that was asleep, once it's back
+    threading.Thread(target=wake.run, daemon=True).start()     # and the phones', told this one is back
     print(f"Ferry on 127.0.0.1:{config.PORT}{'' if app.key else ' (no Web Push: python3-cryptography is missing)'}",
           flush=True)
     server.serve_forever()
