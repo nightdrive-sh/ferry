@@ -48,13 +48,18 @@ struct DropTiles: View {
         .opacity(open ? 1 : 0.4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("Drop here to send to \(device.name)")
-        .dropDestination(for: URL.self) { urls, _ in
-            guard open, !urls.isEmpty else { return false }
-            targeted = nil
-            Task { await model.send(.files(urls), to: device) }
-            return true
-        } isTargeted: { over in
+        // Not dropDestination(for: URL.self), which takes only files: Photos' pictures are promises, read from the
+        // drag's own pasteboard as the icon reads them
+        .onDrop(of: DroppedFiles.contentTypes, isTargeted: Binding(get: { targeted == device.id }, set: { over in
             if over, open { targeted = device.id } else if targeted == device.id { targeted = nil }
+        })) { _ in
+            guard open, let dropped = DroppedFiles.take() else { return false }
+            targeted = nil
+            Task {
+                let urls = await dropped.files()
+                if !urls.isEmpty { await model.send(.files(urls), to: device) }
+            }
+            return true
         }
     }
 

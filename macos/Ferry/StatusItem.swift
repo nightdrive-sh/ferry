@@ -90,7 +90,7 @@ final class StatusItem: NSObject, NSPopoverDelegate, NSWindowDelegate, NSDraggin
 
     /// A drag over the icon opens the popover, so it can go on to another device's tile
     func draggingEntered(_ sender: any NSDraggingInfo) -> NSDragOperation {
-        guard !files(sender).isEmpty else { return [] }
+        guard DroppedFiles.canTake(sender.draggingPasteboard) else { return [] }
         model.iconDragging(true)
         show()
         return .copy
@@ -100,13 +100,15 @@ final class StatusItem: NSObject, NSPopoverDelegate, NSWindowDelegate, NSDraggin
         model.iconDragging(false)
     }
 
-    /// Dropped on the icon itself: to the device picked, with a checkmark on the icon for a moment
+    /// Dropped on the icon itself: to the device picked, with a checkmark on the icon for a moment. Photos' pictures
+    /// come as promises, which are asked for now and sent once Photos has written them.
     func performDragOperation(_ sender: any NSDraggingInfo) -> Bool {
-        let urls = files(sender)
         model.iconDragging(false)
         // One send at a time; the popover shows the one under way
-        guard !urls.isEmpty, !model.isSending else { return false }
+        guard !model.isSending, let dropped = DroppedFiles.take(sender.draggingPasteboard) else { return false }
         Task {
+            let urls = await dropped.files()
+            guard !urls.isEmpty else { return }
             await model.send(.files(urls))
             if case .failed = model.sendState {
                 show()   // the reason, with Try Again
@@ -115,10 +117,6 @@ final class StatusItem: NSObject, NSPopoverDelegate, NSWindowDelegate, NSDraggin
             }
         }
         return true
-    }
-
-    private func files(_ info: any NSDraggingInfo) -> [URL] {
-        info.draggingPasteboard.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
     }
 
     private func flashSent() {
@@ -146,7 +144,7 @@ final class StatusItem: NSObject, NSPopoverDelegate, NSWindowDelegate, NSDraggin
     /// button changes, in case AppKit has replaced its window.
     private func registerDrops() {
         guard let window = item.button?.window else { return }
-        window.registerForDraggedTypes([.fileURL])
+        window.registerForDraggedTypes(DroppedFiles.pasteboardTypes)
         window.delegate = self
         #if DEBUG
         Logger(subsystem: "fi.feature.ferry.mac", category: "menu").notice("drop target: true")

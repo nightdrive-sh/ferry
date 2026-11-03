@@ -213,6 +213,8 @@ With the Mac app running (`macos/build.sh --debug`), Tailscale on the Mac and th
 - [ ] A file dragged from Finder and dropped on the icon → it goes to the device in the pill, and the icon shows a
   checkmark for a moment. Another dragged over the icon and on down to a device's tile in the popover → it goes there,
   and the pill stays as it was. Dragged over the popover and back out → the list comes back.
+- [ ] One photo, then two, dragged from the Photos app onto the icon → they arrive as files (a HEIC as HEIC; a
+  Live Photo as its picture). The same onto a device's tile in the popover.
 - [ ] In Received: a click on a text copies it ("Copied" for a moment), on a link opens the browser, on a file opens it;
   a file's row drags out into Finder; the context menu's Show in Finder, Quick Look, Share… and Remove work.
 - [ ] A three-line text from the iPhone: one line in the row, three lines when pasted after Copy.

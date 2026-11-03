@@ -50,7 +50,7 @@ struct MenuView: View {
         .frame(width: Self.width)
         .quickLookPreview($preview)
         // Only to know a drag is over the popover: the tiles take the drop
-        .dropDestination(for: URL.self) { _, _ in false } isTargeted: { overPopover = $0 }
+        .onDrop(of: DroppedFiles.contentTypes, isTargeted: $overPopover) { _ in false }
     }
 
     @ViewBuilder private var main: some View {
