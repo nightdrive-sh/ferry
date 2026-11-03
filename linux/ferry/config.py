@@ -42,6 +42,7 @@ APPLICATIONS = os.path.join(data_home(), "applications")     # the app list's en
 ICONS = os.path.join(data_home(), "icons", "hicolor")
 AUTOSTART = os.path.join(os.environ.get("XDG_CONFIG_HOME") or os.path.expanduser("~/.config"), "autostart")
 NO_TRAY = os.path.join(config_dir(), "no-tray")   # `ferry tray off`: no tray icon at login (Nightdrive has its own)
+MANAGED = os.path.join(config_dir(), "managed")   # names what updates Ferry instead (install.sh --managed-by): updates.py
 APP = "Ferry"                # the notifications' app name
 ICON = os.path.realpath(os.path.join(WEB, "icon-192.png"))   # the app icon the phone has too (PNG: Qt draws no SVG glow)
 KEEP_DAYS = 7                # an item leaves the box after this many days

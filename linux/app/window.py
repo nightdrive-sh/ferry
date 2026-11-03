@@ -6,7 +6,7 @@ from gi.repository import Gdk, GLib, Gtk
 
 import devices_page
 import look
-from ferry import cli, config, desktop, store, tailnet
+from ferry import cli, config, desktop, store, tailnet, updates
 from actions import ActionsMixin
 from pages import PagesMixin
 from widgets import (
@@ -237,9 +237,13 @@ class Window(PagesMixin, ActionsMixin, Gtk.ApplicationWindow):
     # MARK: The menus
 
     def more_menu(self):
-        entries = [("Add Device…", lambda: self.show_page("add")), ("Devices…", lambda: self.show_page("devices")),
-                   ("Check for Updates", lambda: self.check_update(force=True)), "-",
-                   (f"Ferry {config.VERSION}", None, "dim")]
+        entries = [("Add Device…", lambda: self.show_page("add")), ("Devices…", lambda: self.show_page("devices"))]
+        # An install another app updates (Nightdrive) has no update of its own to check for: it would go round that
+        # app's pinned release
+        who = updates.managed_by()
+        if not who:
+            entries.append(("Check for Updates", lambda: self.check_update(force=True)))
+        entries += ["-", (f"Ferry {config.VERSION}" + (f" · updated by {who}" if who else ""), None, "dim")]
         if self.app.tray:
             entries += ["-", ("Quit Ferry", self.app.quit)]
         return menu_popover(entries)

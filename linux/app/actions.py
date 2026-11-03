@@ -277,7 +277,8 @@ class ActionsMixin:
             if kind == "ok":
                 self.update, self.update_error = value, ""
                 if force and not value:
-                    self.flash(f"Ferry {config.VERSION} is the latest.")
+                    who = updates.managed_by()
+                    self.flash(f"{who} updates Ferry here." if who else f"Ferry {config.VERSION} is the latest.")
             elif force:
                 self.flash("Couldn't check for updates.")
             self.render()

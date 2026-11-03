@@ -23,9 +23,13 @@
 #   --no-packages   skip step 1
 #   --no-tray       no tray icon at login (a desktop with its own Ferry menu, like Nightdrive's top bar); it stays off
 #                   across updates, and `ferry tray on` brings it back
+#   --managed-by NAME
+#                   NAME updates Ferry here (Nightdrive installs the release it pinned), so Ferry doesn't offer its own
+#                   update; it is written to ~/.config/ferry/managed, and removing that file lets Ferry update itself
 #
-# Ferry's update (the button in its window, or `ferry update`) runs this script again. Without a terminal to ask for
-# your password, it asks with the desktop's own dialog (pkexec), and only if a package is missing.
+# Ferry's update (the button in its window, or `ferry update`) downloads the newer release's install.sh and tarball,
+# checks both against the sha256 GitHub gives for them, and runs this script with --from that tarball. Without a
+# terminal to ask for your password, it asks with the desktop's own dialog (pkexec), and only if a package is missing.
 #
 # To remove Ferry: ferry disable, then rm -r ~/.local/lib/ferry ~/.local/bin/ferry ~/.config/systemd/user/ferry.service
 # ~/.local/share/applications/sh.nightdrive.Ferry.desktop ~/.config/autostart/sh.nightdrive.Ferry.desktop
@@ -174,13 +178,14 @@ fetch() {
 
 # All in functions, so that bash has read the whole script before it runs any of it (curl … | bash)
 main() {
-  local beta=0 from="" packages=1 tray=1 tmp version
+  local beta=0 from="" packages=1 tray=1 managed="" tmp version
   while (( $# )); do
     case $1 in
       --beta) beta=1 ;;
       --from) from=${2:?--from needs a path}; shift ;;
       --no-packages) packages=0 ;;
       --no-tray) tray=0 ;;
+      --managed-by) managed=${2:?--managed-by needs a name}; shift ;;
       -h|--help) sed -n '2,/^set -euo/p' "${BASH_SOURCE[0]}" | sed '$d; s/^# \{0,1\}//'; exit 0 ;;
       *) echo "Unknown option: $1 (see --help)" >&2; exit 2 ;;
     esac
@@ -216,6 +221,11 @@ main() {
       || echo "That didn't work. Once Tailscale is running, run it yourself, then: ferry enable" >&2
   fi
   (( tray )) || "$LIB/bin/ferry" tray off
+  # Before `ferry enable` starts anything: a window opened now doesn't offer an update its owner would go round
+  if [[ -n $managed ]]; then
+    mkdir -p "${XDG_CONFIG_HOME:-$HOME/.config}/ferry"
+    printf '%s\n' "$managed" >"${XDG_CONFIG_HOME:-$HOME/.config}/ferry/managed"
+  fi
 
   # 4. The service
   systemctl --user show-environment >/dev/null 2>&1 \
