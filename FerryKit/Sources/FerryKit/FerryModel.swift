@@ -1,41 +1,12 @@
 import Foundation
 import Observation
 
-/// Something a computer left for the phone, with the computer it is on.
-public struct Received: Codable, Identifiable, Hashable, Sendable {
-    public let item: Item
-    public let machine: URL
-    /// The computer's name: items for the phone carry no `from`, their sender is the computer itself.
-    public let machineName: String
-    public var id: String { Self.id(machine: machine, item: item.id) }
-
-    public static func id(machine: URL, item: String) -> String { machine.absoluteString + "#" + item }
-}
-
-/// What a tapped notification leads to.
-public enum NoticeResult: Equatable, Sendable {
-    /// A text to put on the clipboard: always the whole text, never the notification's cut preview.
-    case copy(String)
-    case shown
-    /// A long text whose computer doesn't answer: nothing is copied.
-    case unreachable(name: String)
-    /// No longer in the box.
-    case gone
-}
-
-public enum SendState: Equatable, Sendable {
-    case idle
-    case sending(Double)
-    case sent(to: String)
-    case failed(String)
-}
-
 /// The app's state: the computers, what they hold for the phone, and sending.
 @MainActor @Observable public final class FerryModel {
     public private(set) var list: MachineList
     public private(set) var status: [URL: MachineStatus] = [:]
     public private(set) var received: [Received] = []
-    public private(set) var sendState: SendState = .idle
+    public internal(set) var sendState: SendState = .idle
     /// A computer picked by hand, for the next send only. A pick after a failure starts over: the failure named the
     /// computer before, and Send Clipboard reads the clipboard afresh; a typed text or files wait for Try again.
     public var manual: URL? {
@@ -56,7 +27,7 @@ public enum SendState: Equatable, Sendable {
     /// changes.
     public private(set) var setUps = 0
 
-    private let backend: any FerryBackend
+    let backend: any FerryBackend
     private let store: MachineStore
     private let now: @Sendable () -> Date
     private let sentHold: Duration
@@ -69,6 +40,11 @@ public enum SendState: Equatable, Sendable {
     private var downloaded: [String: URL] = [:]
     /// Kept files across launches; nil keeps them for this run only
     private let cache: FileCache?
+    /// Sends to a computer that is asleep or off, newest first, until it is back (SendQueue); nil keeps none
+    public internal(set) var waiting: [QueuedSend] = []
+    let queue: SendQueue?
+    /// A waiting send went, or its computer refused it: the app says so in a notification
+    public var delivered: (@MainActor (QueuedSend, QueuedOutcome) -> Void)?
     /// Downloads in flight, so a thumbnail and a fetch ahead share one
     private var inFlight: [String: Task<URL, any Error>] = [:]
     /// Fetching small files ahead after a refresh
@@ -116,7 +92,9 @@ public enum SendState: Equatable, Sendable {
     static let toldHides: TimeInterval = 600
 
     public init(backend: any FerryBackend, store: MachineStore, now: @escaping @Sendable () -> Date = Date.init,
-                sentHold: Duration = .seconds(2), cache: FileCache? = nil, wakeRetry: Duration = .milliseconds(1500)) {
+                sentHold: Duration = .seconds(2), cache: FileCache? = nil, wakeRetry: Duration = .milliseconds(1500),
+                queue: SendQueue? = nil) {
+        self.queue = queue
         self.backend = backend
         self.cache = cache
         self.wakeRetry = wakeRetry
@@ -134,6 +112,7 @@ public enum SendState: Equatable, Sendable {
             told = (kept.told ?? [:]).mapValues { Date(timeIntervalSince1970: $0) }
             rebuild()
         }
+        waiting = queue?.list() ?? []
     }
 
     // MARK: Kept on the phone
@@ -287,6 +266,7 @@ public enum SendState: Equatable, Sendable {
         byMachine = byMachine.filter { known.contains($0.key) }
         let answered = Set(results.compactMap { url, answer in if case .box = answer { url } else { nil } })
         if !removes.isEmpty || !clears.isEmpty || !forgets.isEmpty { await sendPending(to: answered) }
+        await deliverWaiting(to: answered)
         rebuild()
         keep()
         store.save(list)
@@ -452,6 +432,8 @@ public enum SendState: Equatable, Sendable {
         unsent = nil
         guard let to = target else { return sendState = .failed(FerryError.noMachine.message) }
         let name = name(of: to)
+        // One the last poll found asleep isn't tried: on the phone the try jams Tailscale's tunnel to the others too
+        if status[to]?.reachable == false, queue != nil { return wait(payloads, for: to, name: name) }
         var done = 0
         do {
             for (i, payload) in payloads.enumerated() {
@@ -465,16 +447,24 @@ public enum SendState: Equatable, Sendable {
                 }
             }
             manual = nil
-            sendState = .sent(to: name)
-            sentGeneration += 1
-            let generation = sentGeneration
-            Task { [weak self, sentHold] in
-                try? await Task.sleep(for: sentHold)
-                if let self, self.sentGeneration == generation, case .sent = self.sendState { self.sendState = .idle }
-            }
+            hold(.sent(to: name))
+        } catch let e as FerryError where e.isNoAnswer && queue != nil {
+            if case .unreachable = e { status[to, default: MachineStatus()].reachable = false }
+            wait(Array(payloads[done...]), for: to, name: name)
         } catch {
             keepUnsent(Array(payloads[done...]))
             fail(error, to: to, name: name)
+        }
+    }
+
+    /// "Sent to" or "Waiting for" shows for a moment, then the bar is ready again
+    func hold(_ state: SendState) {
+        sendState = state
+        sentGeneration += 1
+        let generation = sentGeneration
+        Task { [weak self, sentHold] in
+            try? await Task.sleep(for: sentHold)
+            if let self, self.sentGeneration == generation, self.sendState == state { self.sendState = .idle }
         }
     }
 

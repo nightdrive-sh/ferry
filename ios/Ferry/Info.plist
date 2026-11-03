@@ -31,6 +31,15 @@
 	<string>Ferry scans the QR code a computer running Ferry shows.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Ferry saves the photos you receive to your library.</string>
+	<key>BGTaskSchedulerPermittedIdentifiers</key>
+	<array>
+		<string>fi.feature.ferry.waiting</string>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>fetch</string>
+		<string>remote-notification</string>
+	</array>
 	<key>UIAppFonts</key>
 	<array>
 		<string>JetBrainsMono-Regular.ttf</string>

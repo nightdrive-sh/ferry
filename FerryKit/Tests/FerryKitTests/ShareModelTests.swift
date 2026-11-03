@@ -35,10 +35,50 @@ private let b = URL(string: "https://b.tail1.ts.net/ferry/")!
         return list.machines
     }
 
-    func share(_ payloads: [SendPayload], machines: [URL] = [a, b], settle: Duration = .milliseconds(40)) async -> ShareModel {
+    func share(_ payloads: [SendPayload], machines: [URL] = [a, b], settle: Duration = .milliseconds(40),
+               queue: SendQueue? = nil) async -> ShareModel {
         await fake.set(a, name: "A", idle: 600)
         await fake.set(b, name: "B", idle: 1200)
-        return ShareModel(machines: known(machines), payloads: payloads, ask: fake, send: fake, files: files, settle: settle)
+        return ShareModel(machines: known(machines), payloads: payloads, ask: fake, send: fake, files: files, settle: settle,
+                          queue: queue)
+    }
+
+    // MARK: Sends that wait
+
+    @Test func theOnlyComputerAsleepGetsItWaiting() async {
+        await fake.setDown([a])
+        let queue = tempQueue()
+        let m = await share([text], machines: [a], queue: queue)
+        await m.start()
+        #expect(m.state == .waiting(for: "A"))
+        #expect(queue.list().map(\.what) == ["hello"])
+    }
+
+    @Test func ofSeveralAsleepTheTappedOneGetsItWaiting() async {
+        await fake.setDown([a, b])
+        let queue = tempQueue()
+        let m = await share([text], queue: queue)
+        await m.start()
+        #expect(m.state == .choosing)
+        #expect(m.noneAnswer)
+        await m.pick(b)
+        #expect(m.state == .waiting(for: "B"))
+        #expect(queue.list().map(\.machineName) == ["B"])
+    }
+
+    @Test func aFileUploadThatStallsLeavesWhatDidntArriveWaiting() async throws {
+        let dir = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let one = dir.appending(path: "1.jpg"), two = dir.appending(path: "2.jpg")
+        try Data("1".utf8).write(to: one)
+        try Data("2".utf8).write(to: two)
+        await files.setFail(.unreachable(machine: "A"), after: 1)
+        let queue = tempQueue()
+        let m = await share([.file(one, name: "1.jpg", type: "image/jpeg", clip: false),
+                             .file(two, name: "2.jpg", type: "image/jpeg", clip: false)], machines: [a], queue: queue)
+        await m.start()
+        #expect(m.state == .waiting(for: "A"))
+        #expect(queue.list().map(\.what) == ["2.jpg"])
     }
 
     let text = SendPayload.text("hello", clip: false)

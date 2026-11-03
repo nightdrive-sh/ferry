@@ -93,9 +93,9 @@ func three() -> MachineList {
         #expect(TargetRule.target(three().machines, status: s, manual: mini) == mini)
     }
 
-    @Test func manualUnreachableFallsBack() {   // Review Focus 5
+    @Test func manualAsleepHolds() {   // a send to it waits for it (SendQueue), rather than going elsewhere
         let s: [URL: MachineStatus] = [mac: .init(reachable: true, idle: 0), mini: .init(reachable: false, idle: nil)]
-        #expect(TargetRule.target(three().machines, status: s, manual: mini) == mac)
+        #expect(TargetRule.target(three().machines, status: s, manual: mini) == mini)
     }
 
     @Test func manualForgottenFallsBack() {

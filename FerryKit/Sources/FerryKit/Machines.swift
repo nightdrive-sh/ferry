@@ -121,9 +121,10 @@ public enum TargetRule {
         }.map(\.element)
     }
 
-    /// The hand-picked computer while it answers; otherwise the reachable one used last; otherwise the setup one.
+    /// The hand-picked computer, also one that is asleep (a send to it waits for it: SendQueue); otherwise the
+    /// reachable one used last; otherwise the setup one.
     public static func target(_ m: [KnownMachine], status: [URL: MachineStatus], manual: URL?) -> URL? {
-        if let manual, m.contains(where: { $0.url == manual }), reachable(status[manual]) { return manual }
+        if let manual, m.contains(where: { $0.url == manual }) { return manual }
         let ordered = order(m, status: status)
         return (ordered.first { reachable(status[$0.url]) } ?? m.first(where: \.isSetup) ?? ordered.first)?.url
     }

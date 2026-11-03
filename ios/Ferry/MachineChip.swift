@@ -14,12 +14,13 @@ struct MachineChip: View {
                 Section("Send to") {
                     ForEach(TargetRule.order(model.list.machines, status: model.status), id: \.url) { m in
                         // A menu item reads its label as icon, title and subtitle
+                        // One that is asleep can be picked too: the send waits on the phone until it is back
                         Button { model.manual = m.url } label: {
                             if m.url == model.target { Image(systemName: "checkmark") }
                             Text(m.name)
-                            Text(TargetRule.usedLabel(model.status[m.url]))
+                            Text(model.status[m.url]?.reachable == false ? "can't reach · it waits"
+                                 : TargetRule.usedLabel(model.status[m.url]))
                         }
-                        .disabled(model.status[m.url]?.reachable == false)
                     }
                 }
             } label: { chip }

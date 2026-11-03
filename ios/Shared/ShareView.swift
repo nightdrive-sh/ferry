@@ -18,7 +18,11 @@ struct ShareView: View {
     var body: some View {
         NavigationStack {
             Group {
-                if case .sent(let to) = model.state { sent(to) } else { list }
+                switch model.state {
+                case .sent(let to): done("checkmark.circle.fill", "Sent to \(to)")
+                case .waiting(let to): done("clock.fill", "Waiting for \(to)", note: "It goes when \(to) is back.")
+                default: list
+                }
             }
             .background(Theme.background)
             .navigationTitle("Ferry")
@@ -30,7 +34,10 @@ struct ShareView: View {
             }
         }
         .task(id: model.state) {
-            guard case .sent = model.state else { return }
+            switch model.state {
+            case .sent, .waiting: break
+            default: return
+            }
             let until = max(ContinuousClock.now + Self.sentHold, shownAt + Self.sheetRise + Self.sentHold)
             try? await Task.sleep(until: until)
             if !Task.isCancelled { close() }
@@ -38,15 +45,16 @@ struct ShareView: View {
     }
 
     /// The whole sheet turns into the confirmation: a row under the list went unseen when the send needed no tap
-    private func sent(_ to: String) -> some View {
+    private func done(_ symbol: String, _ title: LocalizedStringKey, note: LocalizedStringKey? = nil) -> some View {
         VStack(spacing: 14) {
-            Image(systemName: "checkmark.circle.fill")
+            Image(systemName: symbol)
                 .font(.system(size: 56, weight: .medium))
                 .foregroundStyle(Theme.primary)
                 .accessibilityHidden(true)
-            Text("Sent to \(to)")
+            Text(title)
                 .font(.system(.title3, weight: .semibold))
                 .foregroundStyle(Theme.text)
+            if let note { Text(note).font(.subheadline).foregroundStyle(Theme.dim) }
             if let payloads = model.payloads {
                 Text(ShareContent.summary(payloads)).font(.mono(.footnote)).foregroundStyle(Theme.dim)
                     .lineLimit(2).multilineTextAlignment(.center)
@@ -83,6 +91,11 @@ struct ShareView: View {
                     ForEach(model.rows) { row in machine(row) }
                 } header: {
                     Text("Send to").textCase(.uppercase).font(.system(size: 12, weight: .semibold)).tracking(1).foregroundStyle(Theme.primary)
+                } footer: {
+                    if model.noneAnswer {
+                        Text("None of them answers. Tap one, and it waits on this iPhone until that computer is back.")
+                            .font(.footnote).foregroundStyle(Theme.dim)
+                    }
                 }
             }
             status
@@ -117,7 +130,7 @@ struct ShareView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(!answered)
+        .disabled(!answered && !(row.reply == .unreachable && model.canWait))
         .listRowBackground(Theme.card)
         .accessibilityLabel(row.machine.name)
         .accessibilityValue(row.subtitle)

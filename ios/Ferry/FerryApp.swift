@@ -100,7 +100,11 @@ struct FerryApp: App {
         // The files the computers sent stay in Caches while their items are in the boxes (iOS may empty it if space
         // runs out), unlike tmp, which is emptied above on every launch
         let files = FileManager.default.urls(for: .cachesDirectory, in: .userDomainMask)[0].appending(path: "Files")
-        let model = FerryModel(backend: HTTPBackend(), store: MachineStore(defaults: defaults), cache: FileCache(directory: files))
+        // Sends to a computer that is asleep or off wait in the App Group, where the share extension adds its own
+        let model = FerryModel(backend: HTTPBackend(), store: MachineStore(defaults: defaults), cache: FileCache(directory: files),
+                               queue: SendQueue.appGroup(Self.appGroup))
+        model.delivered = WaitingSends.notify
+        WaitingSends.shared.model = model
         let push = PushCenter(model: model, defaults: defaults)
         PushCenter.current = push
         push.start()
@@ -168,6 +172,7 @@ struct FerryApp: App {
             .task(id: "\(phase == .background) \(demo == nil)") { await poll() }
             .onChange(of: phase) { _, now in
                 if now == .active { Task { await push.refreshAuthorization() } }
+                if now == .background { WaitingSends.shared.schedule() }   // sends that wait go from the background
             }
         }
     }

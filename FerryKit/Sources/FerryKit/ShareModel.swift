@@ -59,6 +59,8 @@ public enum ShareState: Equatable, Sendable {
     case choosing
     case sending(Double)
     case sent(to: String)
+    /// Nobody answered: the share waits on the phone for this computer until it is back (SendQueue)
+    case waiting(for: String)
     case failed(String)
 }
 
@@ -75,6 +77,8 @@ public enum ShareState: Equatable, Sendable {
     private let ask: any FerryBackend
     private let send: any FerryBackend
     private let files: any FileSender
+    /// Where a share for a computer that doesn't answer waits; nil fails instead
+    private let queue: SendQueue?
     /// Rows keep their place shortly after the first answer, so a late answer never moves a row from under a finger
     private var frozen = false
     /// How long after the first answer the rows still sort: computers that are awake answer within moments of each
@@ -87,14 +91,17 @@ public enum ShareState: Equatable, Sendable {
     private var unsent: [SendPayload]?
 
     public convenience init(machines: [KnownMachine], payloads: [SendPayload], ask: any FerryBackend,
-                            send: any FerryBackend, files: any FileSender, settle: Duration = .milliseconds(400)) {
-        self.init(machines: machines, load: { payloads }, ask: ask, send: send, files: files, settle: settle)
+                            send: any FerryBackend, files: any FileSender, settle: Duration = .milliseconds(400),
+                            queue: SendQueue? = nil) {
+        self.init(machines: machines, load: { payloads }, ask: ask, send: send, files: files, settle: settle, queue: queue)
     }
 
     /// The list shows at once, with every computer "asking…", while `load` gets the share ready.
     public init(machines: [KnownMachine], load: @escaping @Sendable () async -> [SendPayload], ask: any FerryBackend,
-                send: any FerryBackend, files: any FileSender, settle: Duration = .milliseconds(400)) {
+                send: any FerryBackend, files: any FileSender, settle: Duration = .milliseconds(400),
+                queue: SendQueue? = nil) {
         self.machines = machines
+        self.queue = queue
         self.load = load
         self.settle = settle
         self.ask = ask
@@ -134,11 +141,19 @@ public enum ShareState: Equatable, Sendable {
         }
     }
 
-    /// A tap on a row: only one that answered, and only while nothing is on its way.
+    /// A tap on a row: one that answered, and only while nothing is on its way. One that doesn't answer gets the share
+    /// waiting for it, once every computer has been asked.
     public func pick(_ machine: URL) async {
-        guard isDeciding, let row = rows.first(where: { $0.id == machine }), case .answered = row.reply else { return }
-        await sendAll(to: row.machine)
+        guard isDeciding, let row = rows.first(where: { $0.id == machine }) else { return }
+        if case .answered = row.reply { return await sendAll(to: row.machine) }
+        if row.reply == .unreachable, canWait { wait(for: row.machine) }
     }
+
+    /// Every computer was asked and none answered: a tap on one leaves the share waiting for it
+    public var noneAnswer: Bool { canWait && !rows.isEmpty && rows.allSatisfy { $0.reply == .unreachable } }
+
+    /// A computer that doesn't answer can be tapped for the share to wait for it, once every computer was asked
+    public var canWait: Bool { queue != nil && rows.allSatisfy { $0.reply != .asking } }
 
     /// After a failure: the same computer again when a send failed, otherwise every computer asked again.
     public func retry() async {
@@ -179,6 +194,9 @@ public enum ShareState: Equatable, Sendable {
             return
         }
         switch answered.count {
+        case 0 where queue != nil:
+            // The only computer gets it waiting at once; of several, the user picks the one it waits for
+            if machines.count == 1 { wait(for: machines[0]) } else { state = .choosing }
         case 0:
             state = .failed(machines.count == 1 ? FerryError.unreachable(machine: machines[0].name).message
                                                 : "Can't reach your computers. Is Tailscale on?")
@@ -187,6 +205,19 @@ public enum ShareState: Equatable, Sendable {
         default:
             state = .choosing
         }
+    }
+
+    /// The share, or what of it is left, waits on the phone for machine (docs/protocol.md › Clients › Sends that wait)
+    private func wait(for machine: KnownMachine) {
+        guard let queue else { return }
+        lastTarget = machine
+        do {
+            for p in unsent ?? payloads ?? [] { try queue.add(p, to: machine.url, name: machine.name) }
+        } catch {
+            return state = .failed("Couldn't keep it to send later")
+        }
+        unsent = nil
+        state = .waiting(for: machine.name)
     }
 
     private func sendAll(to machine: KnownMachine) async {
@@ -218,6 +249,11 @@ public enum ShareState: Equatable, Sendable {
             }
             unsent = nil
             state = .sent(to: machine.name)
+        } catch let e as FerryError where e.isNoAnswer && queue != nil {
+            // What the computer didn't take waits for it; files it took stay out
+            let arrived = arrived.withLock { $0 }
+            unsent?.removeAll { if case .file(let url, _, _, _) = $0 { arrived.contains(url) } else { false } }
+            wait(for: machine)
         } catch FerryError.unreachable {
             state = .failed(FerryError.unreachable(machine: machine.name).message)
         } catch let e as FerryError {

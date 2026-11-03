@@ -191,6 +191,20 @@ extension PushCenter: UNUserNotificationCenterDelegate {
 
 /// Hands APNs' answers to PushCenter; SwiftUI has no other way to receive them.
 final class AppDelegate: NSObject, UIApplicationDelegate {
+    func application(_ application: UIApplication,
+                     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
+        MainActor.assumeIsolated { WaitingSends.shared.register() }   // before launch ends, as BGTaskScheduler wants
+        return true
+    }
+
+    /// A background push: a computer's "awake" push, which wakes the app to send what waits for that computer
+    func application(_ application: UIApplication, didReceiveRemoteNotification userInfo: [AnyHashable: Any],
+                     fetchCompletionHandler done: @escaping (UIBackgroundFetchResult) -> Void) {
+        nonisolated(unsafe) let info = userInfo
+        nonisolated(unsafe) let done = done
+        Task { @MainActor in done(await WaitingSends.shared.awake(info)) }
+    }
+
     func application(_ application: UIApplication, didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data) {
         PushCenter.current?.didRegister(deviceToken: deviceToken)
     }

@@ -27,6 +27,25 @@ struct MainView<Bar: View>: View {
         TimelineView(.periodic(from: .now, by: 30)) { context in   // the ages move on while the screen is open
           ScrollViewReader { scroller in
             List {
+                // Sends to a computer that is asleep, above what came: the app's title row heads them then
+                if !model.waiting.isEmpty {
+                    Section {
+                        ForEach(model.waiting) { send in
+                            WaitingRow(send: send, now: context.date) { withAnimation { model.cancel(send) } }
+                                .listRowBackground(Theme.card)
+                                .listRowSeparatorTint(Theme.hairline)
+                                .listRowInsets(EdgeInsets(top: 11, leading: 16, bottom: 11, trailing: 14))
+                                .alignmentGuide(.listRowSeparatorLeading) { _ in 63 }
+                                .swipeActions(edge: .trailing) {
+                                    Button("Cancel", systemImage: "xmark", role: .destructive) {
+                                        withAnimation { model.cancel(send) }
+                                    }
+                                }
+                        }
+                    } header: {
+                        top(title: "WAITING", clear: false)
+                    }
+                }
                 Section {
                     if model.received.isEmpty, !model.hasPolled {
                         // A slow connection takes seconds to answer: "nothing here" would be wrong until it does
@@ -53,16 +72,12 @@ struct MainView<Bar: View>: View {
                             .task(id: "\(r.id) \(model.status[r.machine]?.reachable == true)") { await loadThumbnail(r) }
                     }
                 } header: {
-                    // The title row lives in the section header, not in a row: an inset list clips its rows to the
-                    // card's rounded corners, which cut into the icon. Flush with the card: the icon at its left edge,
-                    // the online count at its right.
-                    VStack(alignment: .leading, spacing: 18) {
-                        header
-                        if let leaveDemo { DemoBanner(step: demo?.step ?? .tryIt, leave: leaveDemo) }
-                        sectionTitle.padding(.horizontal, 16)
+                    if model.waiting.isEmpty {
+                        top(title: "RECEIVED", clear: true)
+                    } else {
+                        sectionTitle("RECEIVED", clear: true).padding(.horizontal, 16)
+                            .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     }
-                    .padding(.top, 6)
-                    .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
                 }
             }
             .listStyle(.insetGrouped)
@@ -126,11 +141,24 @@ struct MainView<Bar: View>: View {
     }
 
 
-    private var sectionTitle: some View {
+    /// The first section's header: the title row lives there, not in a row: an inset list clips its rows to the
+    /// card's rounded corners, which cut into the icon. Flush with the card: the icon at its left edge, the online
+    /// count at its right.
+    private func top(title: LocalizedStringKey, clear: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            header
+            if let leaveDemo { DemoBanner(step: demo?.step ?? .tryIt, leave: leaveDemo) }
+            sectionTitle(title, clear: clear).padding(.horizontal, 16)
+        }
+        .padding(.top, 6)
+        .listRowInsets(EdgeInsets(top: 0, leading: 0, bottom: 8, trailing: 0))
+    }
+
+    private func sectionTitle(_ title: LocalizedStringKey, clear: Bool) -> some View {
         HStack(alignment: .firstTextBaseline) {
-            Text("RECEIVED").font(.system(size: 12, weight: .semibold)).tracking(1).foregroundStyle(Theme.primary)
+            Text(title).font(.system(size: 12, weight: .semibold)).tracking(1).foregroundStyle(Theme.primary)
             Spacer()
-            if !model.received.isEmpty {
+            if clear, !model.received.isEmpty {
                 Button("Clear") { confirmClear = true }.font(.subheadline).foregroundStyle(Theme.dim)
             }
         }

@@ -115,6 +115,8 @@ struct SendBar: View {
             Label("Sending…", systemImage: "arrow.up.circle").labelStyle(BarLabel())
         case .sent(let to):
             Label("Sent to \(to)", systemImage: "checkmark").labelStyle(BarLabel())
+        case .waiting(let name):
+            Label("Waiting for \(name)", systemImage: "clock").labelStyle(BarLabel())
         case .failed(let message):
             VStack(spacing: 1) {
                 Text(message).font(.system(size: 13, weight: .medium)).lineLimit(1).minimumScaleFactor(0.8)

@@ -37,6 +37,7 @@ enum ShareSetup {
                 try? FileManager.default.removeItem(at: url.deletingLastPathComponent())
             }
             return payloads
-        }, ask: HTTPBackend(timeout: askTimeout), send: HTTPBackend(), files: uploader)
+        }, ask: HTTPBackend(timeout: askTimeout), send: HTTPBackend(), files: uploader,
+           queue: SendQueue.appGroup(appGroup))   // the app sends what waits, once its computer is back
     }
 }
