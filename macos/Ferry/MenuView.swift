@@ -14,12 +14,13 @@ struct MenuView: View {
 
     @State private var confirmingClear = false
     @State private var preview: URL?
-    /// The drag is over the popover, or over one of its device tiles
+    /// The drag is over the popover, or over its device tiles' drop area (which has it then, not the popover)
     @State private var overPopover = false
+    @State private var overTiles = false
     @State private var overTile: String?
 
     private var dragging: Bool {
-        model.draggingOverIcon || overPopover || overTile != nil || showTiles
+        model.draggingOverIcon || overPopover || overTiles || showTiles
     }
 
     #if DEBUG
@@ -49,7 +50,7 @@ struct MenuView: View {
         .padding(12)
         .frame(width: Self.width)
         .quickLookPreview($preview)
-        // Only to know a drag is over the popover: the tiles take the drop
+        // Only to know a drag is over the popover: it never takes the drop, the tiles' drop area does (TileDropArea)
         .onDrop(of: DroppedFiles.contentTypes, isTargeted: $overPopover) { _ in false }
     }
 
@@ -58,7 +59,7 @@ struct MenuView: View {
             if SetupStep.needed(model) {
                 SetupStep(model: model)
             } else if dragging {
-                DropTiles(model: model, targeted: $overTile, height: max(listHeight, 200))
+                DropTiles(model: model, targeted: $overTile, inside: $overTiles, height: max(listHeight, 200))
             } else {
                 NotificationsLine(model: model)
                 received

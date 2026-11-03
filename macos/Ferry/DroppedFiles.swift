@@ -30,7 +30,9 @@ final class DroppedFiles: @unchecked Sendable {
     }
 
     /// nil when the drag has nothing to send. Promises are asked for here, so call it while the drop is performed.
-    static func take(_ pb: NSPasteboard = NSPasteboard(name: .drag)) -> DroppedFiles? {
+    /// Only ever with the drag's own `draggingPasteboard`, never `NSPasteboard(name: .drag)`: a source such as a Dock
+    /// stack drags on a pasteboard of its own, and the shared one still holds an earlier drag's files.
+    static func take(_ pb: NSPasteboard) -> DroppedFiles? {
         let urls = pb.readObjects(forClasses: [NSURL.self], options: [.urlReadingFileURLsOnly: true]) as? [URL] ?? []
         if !urls.isEmpty { return DroppedFiles(ready: urls) }
         let receivers = pb.readObjects(forClasses: [NSFilePromiseReceiver.self], options: nil) as? [NSFilePromiseReceiver] ?? []
