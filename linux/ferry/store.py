@@ -12,7 +12,7 @@ import secrets
 import shutil
 import time
 
-from . import config, desktop, push
+from . import config, controls, desktop, push
 
 
 # Unicode's White_Space, as Swift's isWhitespace has it (Python's isspace() adds U+001C to U+001F)
@@ -90,7 +90,9 @@ def new_item(**kw):
 
 
 def safe_name(name):
-    name = re.sub(r'[\x00-\x1f/\\]', "", os.path.basename(name.replace("\\", "/"))).strip().lstrip(".")
+    """A name for a file from another device: no path, no leading dot, and no controls (controls.py), as a bidi
+    control would show a name's end reversed in a file manager."""
+    name = controls.name(re.sub(r'[/\\]', "", os.path.basename(name.replace("\\", "/")))).strip().lstrip(".")
     return name[:200] or "file"
 
 

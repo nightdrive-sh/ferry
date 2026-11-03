@@ -47,7 +47,7 @@ A computer that ran Nightdrive's Ferry plugin keeps everything: its state (the b
 | `ferry devices` | Your other computers running Ferry and your phones, the picked one marked |
 | `ferry target [DEVICE]` | The device sends go to, or picks another |
 | `ferry list` | What's in the box, numbered |
-| `ferry get [n]` | An item from the phone (the newest without a number): a text printed, a file saved here |
+| `ferry get [n]` | An item from the phone (the newest without a number): a text printed (in a terminal, with its control characters shown as escapes), a file saved here |
 | `ferry open <n>` / `ferry copy <n>` | Opens a file, copies a text |
 | `ferry qr` | Add Device's QR code, for adding a phone (`ferry url` is the address itself) |
 | `ferry enable` / `ferry disable` | The service on or off, with its address on the tailnet |

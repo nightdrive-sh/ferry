@@ -2,7 +2,8 @@
 
     ferry send [FILE…|TEXT]       files, or a text; with nothing: what is piped in, or the clipboard (--to DEVICE: see below)
     ferry list                    what's in the box, numbered: what was received (1 is the newest), then what was sent
-    ferry get [N]                 an item (1, the newest received, by default): a text printed, a file copied here
+    ferry get [N]                 an item (1, the newest received, by default): a text printed (to a terminal, its
+                                  control characters as escapes), a file copied here
     ferry open | copy N           a file opened, a text to the clipboard
     ferry rm N…                   items out of the box (a received file stays in Downloads)
     ferry clear [received|sent]   everything, or one direction, out of the box
@@ -34,7 +35,8 @@ import shutil
 import subprocess
 import sys
 
-from . import computers, config, desktop, forget, install, notices, push, server, store, tailnet, terminal, updates
+from . import (computers, config, controls, desktop, forget, install, notices, push, server, store, tailnet, terminal,
+               updates)
 
 
 def listing():
@@ -110,7 +112,7 @@ def main():
         print(u)
         return 0 if u else 1
     elif cmd == "list" and a[1:] == ["--json"]:
-        print(json.dumps(listing(), ensure_ascii=False))
+        print(controls.json_text(json.dumps(listing(), ensure_ascii=False)))
     elif cmd == "list":
         terminal.print_list()
     elif cmd in ("send", "add", "pick", "text", "send-clipboard"):

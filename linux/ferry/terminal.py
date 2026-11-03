@@ -5,7 +5,7 @@ import subprocess
 import sys
 import time
 
-from . import computers, config, desktop, notices, store, tailnet
+from . import computers, config, controls, desktop, notices, store, tailnet
 
 
 def ago(t):
@@ -19,7 +19,8 @@ def fit(text, room):
 
 
 def oneline(text, room):
-    return fit(" ".join(text.split()), room)
+    """A text on one line, its controls shown as escapes (controls.py: a text from another device is no terminal's)."""
+    return fit(controls.shown(" ".join(text.split())), room)
 
 
 def print_list():
@@ -34,9 +35,11 @@ def print_list():
             print(("\n" if heading else "") + h)
             heading = h
         head = f"  {n:>{pad}}  {ago(it.get('time', 0)):<10}  "
-        who = f"  · {it['from']}" if it.get("from") else f"  · for {it['for']}" if it.get("for") else ""
+        who = f"  · {controls.shown(it['from'])}" if it.get("from") else \
+            f"  · for {controls.shown(it['for'])}" if it.get("for") else ""
         room = max(width - len(head) - len(who), 20)
-        what = f"{it.get('name', '')}  {config.human(it.get('size', 0))}" if it.get("kind") == "file" else \
+        name = controls.shown(it.get("name", ""))
+        what = f"{name}  {config.human(it.get('size', 0))}" if it.get("kind") == "file" else \
             '"' + oneline(it.get("text", ""), room - 2) + '"'
         print(head + fit(what, room) + who)
     if any(i.get("to") == "computer" and not i.get("seen") for i in items):
@@ -45,10 +48,13 @@ def print_list():
 
 
 def get(it):
-    """A text printed; a file copied to the current folder (its name printed, so `ferry get` works in a script too)."""
+    """A text printed; a file copied to the current folder (its name printed, so `ferry get` works in a script too).
+    To a terminal the text's controls are shown as escapes; piped, it is the text as it came."""
     if it.get("kind") == "text":
         text = it.get("text", "")
-        sys.stdout.write(text + ("\n" if sys.stdout.isatty() and not text.endswith("\n") else ""))
+        if sys.stdout.isatty():
+            text = controls.shown_text(text) + ("" if text.endswith("\n") else "\n")
+        sys.stdout.write(text)
     else:
         here = os.path.join(os.getcwd(), store.safe_name(it.get("name", "file")))
         if os.path.exists(here) and os.path.samefile(here, it["path"]):   # already here (Downloads)
