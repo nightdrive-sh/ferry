@@ -33,6 +33,8 @@ class NotifySend(unittest.TestCase):
         bus = mock.patch.object(notices, "notifications", notices.Notifications(connect=None))   # no PyGObject
         bus.start()
         self.addCleanup(bus.stop)
+        self.markup = mock.patch.object(notices, "reads_markup", return_value=True).start()   # not the real desktop's
+        self.addCleanup(mock.patch.stopall)
 
     def fake(self, script):
         path = os.path.join(self.tmp.name, "notify-send")
@@ -79,6 +81,21 @@ class NotifySend(unittest.TestCase):
             lines = f.read().splitlines()
         self.assertEqual(lines[lines.index("-r") + 1], "7")
 
+    def test_escapes_the_body_for_a_daemon_that_reads_markup(self):   # another device's text can't make a link
+        args = os.path.join(self.tmp.name, "args")
+        self.fake(f'printf "%s\\n" "$@" > {args}\necho 7')
+        notices.notify("Text from iphone", '<a href="https://x">tap</a> & <b>')
+        with open(args) as f:
+            self.assertEqual(f.read().splitlines()[-1], '&lt;a href="https://x"&gt;tap&lt;/a&gt; &amp; &lt;b&gt;')
+
+    def test_plain_text_for_a_daemon_that_doesnt(self):   # Nightdrive's shows the body as it is
+        self.markup.return_value = False
+        args = os.path.join(self.tmp.name, "args")
+        self.fake(f'printf "%s\\n" "$@" > {args}\necho 7')
+        notices.notify("Text from iphone", "Tom & Jerry <3")
+        with open(args) as f:
+            self.assertEqual(f.read().splitlines()[-1], "Tom & Jerry <3")
+
     def test_no_daemon(self):   # without buttons it says so and ends
         self.fake("echo 'GDBus.Error: The name org.freedesktop.Notifications was not provided' >&2\nexit 1")
         self.assertEqual(notices.notify("Copied from iphone", "hello"), "")
@@ -90,6 +107,11 @@ class FakeBus:
     def __init__(self, address, on_signal):
         self.address, self.on_signal, self.fail = address, on_signal, 0
         self.sent, self.closes, self.dead, self.dropped, self.replaced = [], [], False, False, []
+        self.caps, self.asked = [], 0
+
+    def capabilities(self):
+        self.asked += 1
+        return self.caps
 
     def notify(self, app_icon, summary, body, actions, hints, replaces=0):
         if self.fail:
@@ -117,6 +139,7 @@ class Bus(unittest.TestCase):
         self.buses = []
         self.address = "unix:path=/run/user/1000/bus"
         self.fails = 0
+        self.caps = ["actions", "body", "body-markup"]
         self.notifications = notices.Notifications(connect=self.connect, env=lambda: {
             "DBUS_SESSION_BUS_ADDRESS": self.address, "XDG_RUNTIME_DIR": "/nonexistent"})
         for name, value in (("notifications", self.notifications), ("ICON", "/ferry/icon-192.png")):
@@ -132,6 +155,7 @@ class Bus(unittest.TestCase):
             self.fails -= 1
             raise RuntimeError("Could not connect: No such file or directory")
         self.buses.append(FakeBus(address, on_signal))
+        self.buses[-1].caps = self.caps
         return self.buses[-1]
 
     def test_buttons_go_as_the_actions(self):
@@ -236,6 +260,20 @@ class Bus(unittest.TestCase):
         self.assertEqual(notices.notify("Copied from iphone", "hello"), "")
         self.notify_send.assert_called_once()
         self.assertEqual(notices.notify("Copied from iphone", "again"), "7")
+
+    def test_escapes_the_body_for_a_daemon_that_reads_markup(self):   # GNOME, KDE, mako: <a href> would be a link
+        notices.notify("Text from iphone", '<a href="https://x">tap</a> & more')
+        notices.notify("Text from iphone", "again")
+        self.assertEqual(self.buses[0].sent[0][2], '&lt;a href="https://x"&gt;tap&lt;/a&gt; &amp; more')
+        self.assertEqual(self.buses[0].asked, 1)   # once per connection
+
+    def test_plain_text_for_a_daemon_that_doesnt(self):   # Nightdrive's would show "&amp;"
+        notices.notify("Copied from iphone", "a & b")
+        self.caps = ["actions", "body"]
+        self.buses[0].dead = True   # a new connection asks again: its daemon may be another
+        notices.notify("Text from iphone", "Tom & Jerry <3")
+        self.assertEqual(self.buses[0].sent[0][2], "a &amp; b")
+        self.assertEqual(self.buses[1].sent[0][2], "Tom & Jerry <3")
 
     def test_no_daemon_falls_back_to_notify_send(self):
         self.notify_send.side_effect = None

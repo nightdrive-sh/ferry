@@ -1,8 +1,13 @@
 """Notifications: over a session bus connection of Ferry's own, through PyGObject's Gio, else notify-send's.
 
 GNOME tells only the connection that sent a notification which of its buttons was pressed, and Ubuntu's AppArmor profile
-keeps notify-send from asking for buttons at all, hence a connection of our own (Notifications)."""
+keeps notify-send from asking for buttons at all, hence a connection of our own (Notifications).
+
+A body is markup where the daemon says it reads markup (body-markup): another device's text or file name is escaped
+there, so it can't make a link or an image in the notification, and left as it is where the daemon shows plain text
+(Nightdrive's), which would otherwise show "&amp;"."""
 import contextlib
+import html
 import select
 import subprocess
 import threading
@@ -48,6 +53,9 @@ class GioBus:
         return self.call("Notify", V("(susssasa{sv}i)", (config.APP, replaces, app_icon, summary, body, actions,
                                                          {k: V("s", v) for k, v in hints.items()}, -1)), "(u)")[0]
 
+    def capabilities(self):
+        return self.call("GetCapabilities", None, "(as)")[0]
+
     def close(self, nid):
         self.call("CloseNotification", self.GLib.Variant("(u)", (nid,)), "()")
 
@@ -71,6 +79,7 @@ class Notifications:
         self.connect = connect
         self.env = env or desktop.desktop_env
         self.bus, self.address = None, ""
+        self.markup = None                 # the bus whose daemon reads markup in a body, and whether it does
         self.actions = {}                  # a notification's id: its {key: (label, function)}
         self.lock = threading.Lock()       # the actions
         self.busy = threading.Lock()       # the connection
@@ -97,8 +106,8 @@ class Notifications:
                 if bus is None:
                     return None
                 try:
-                    nid = bus.notify(app_icon, summary, body, [s for k in actions for s in (k, actions[k][0])], hints,
-                                     replaces)
+                    nid = bus.notify(app_icon, summary, self.body(bus, body),
+                                     [s for k in actions for s in (k, actions[k][0])], hints, replaces)
                     break
                 except Exception:   # GLib.Error: the bus went, or no daemon answers on it
                     continue
@@ -110,6 +119,12 @@ class Notifications:
                 for old in list(self.actions)[:-self.KEEP]:
                     del self.actions[old]
         return str(nid)
+
+    def body(self, bus, body):
+        """body as this bus's daemon reads it: asked once per connection, as a daemon on a new one may be another."""
+        if self.markup is None or self.markup[0] is not bus:
+            self.markup = (bus, "body-markup" in bus.capabilities())
+        return as_body(body, self.markup[1])
 
     def close(self, nid):
         """False when it couldn't be closed this way (the notification wasn't sent this way)."""
@@ -134,6 +149,23 @@ class Notifications:
 
 
 notifications = Notifications()
+
+
+def as_body(text, markup):
+    """text as a notification's body: escaped for a daemon that reads markup in it (<a href>, <img>, <b>)."""
+    return html.escape(text, quote=False) if markup else text
+
+
+def reads_markup():
+    """Whether the session's notification daemon reads markup in a body, asked with gdbus for notify-send (which sends
+    the body as it is). True when it can't be asked: an escaped text shown as it is is only untidy."""
+    try:
+        out = subprocess.run(["gdbus", "call", "--session", "--dest", NOTIFICATIONS[0], "--object-path",
+                              NOTIFICATIONS[1], "--method", NOTIFICATIONS[0] + ".GetCapabilities"],
+                             capture_output=True, text=True, timeout=config.NOTIFY_WAIT, env=desktop.desktop_env())
+    except (OSError, subprocess.SubprocessError):
+        return True
+    return "'body-markup'" in out.stdout if out.returncode == 0 else True
 
 
 def notify(summary, body="", actions=(), preview="", replaces=""):
@@ -173,8 +205,8 @@ def notify_send(summary, body, actions, preview, replaces=""):
     if actions:
         cmd.append("--wait")
     try:
-        p = subprocess.Popen(cmd + ["--", summary, body], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
-                             env=desktop.desktop_env())
+        p = subprocess.Popen(cmd + ["--", summary, as_body(body, reads_markup())], stdout=subprocess.PIPE,
+                             stderr=subprocess.DEVNULL, text=True, env=desktop.desktop_env())
     except OSError:
         return ""
     # The daemon's answer is the notification's id. Where there is no daemon (a server, a window manager without one),
