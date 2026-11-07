@@ -28,7 +28,7 @@ You need Tailscale on every device, signed in as the same user, with **MagicDNS 
 ## On Linux
 
 ```sh
-curl -fsSL https://nightdrive.sh/ferry/install | bash
+curl --proto '=https' --tlsv1.2 -fsSL https://nightdrive.sh/ferry/install | bash
 ```
 
 The script ([`linux/install.sh`](linux/install.sh), meant to be read) installs what Ferry uses with apt, dnf or pacman (Ubuntu 24.04 and Debian 13 or later, Fedora, Arch), puts Ferry in `~/.local/lib/ferry` with the `ferry` command in `~/.local/bin`, and starts it as a systemd user service, `ferry.service`, published on the tailnet with `tailscale serve` at `https://<computer>.<tailnet>.ts.net/ferry/`. Run again, it updates Ferry. `--beta` takes pre-releases too, `--from linux` installs a checkout's `linux/` folder instead of downloading, `--no-tray` leaves out the tray icon, and `--managed-by NAME` says that NAME updates Ferry here (Nightdrive installs the release it pinned), so Ferry doesn't offer its own update (the name is kept in `~/.config/ferry/managed`).

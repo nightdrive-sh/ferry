@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Installs Ferry on this Linux computer for you (not system-wide), or updates it, and starts it:
 #
-#   curl -fsSL https://nightdrive.sh/ferry/install | bash   (a redirect to the latest release's install.sh)
+#   curl --proto '=https' --tlsv1.2 -fsSL https://nightdrive.sh/ferry/install | bash
+#   (a redirect to the latest release's install.sh)
 #
 # What it does, in order:
 #   1. Installs what Ferry uses with the distribution's package manager (apt, dnf or pacman, through sudo), only what
@@ -27,6 +28,9 @@
 #                   NAME updates Ferry here (Nightdrive installs the release it pinned), so Ferry doesn't offer its own
 #                   update; it is written to ~/.config/ferry/managed, and removing that file lets Ferry update itself
 #
+# For testing a release that isn't on GitHub: FERRY_DOWNLOAD_URL (https, http or file) downloads the tarball from
+# there instead, and only with FERRY_DOWNLOAD_SHA256, the tarball's sha256, which it must match.
+#
 # Ferry's update (the button in its window, or `ferry update`) downloads the newer release's install.sh and tarball,
 # checks both against the sha256 GitHub gives for them, and runs this script with --from that tarball. Without a
 # terminal to ask for your password, it asks with the desktop's own dialog (pkexec), and only if a package is missing.
@@ -42,6 +46,10 @@ REPO=nightdrive-sh/ferry
 ASSET=ferry-linux.tar.gz
 LIB=$HOME/.local/lib/ferry
 BIN=$HOME/.local/bin
+
+# What comes from GitHub comes only over HTTPS with TLS 1.2 or newer, also after a redirect (GitHub's downloads are
+# redirects to its storage, and --proto holds for those too): curl would otherwise follow one to plain http
+CURL=(curl --proto '=https' --tlsv1.2)
 
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 fail() { printf 'Ferry: %s\n' "$*" >&2; exit 1; }
@@ -136,12 +144,10 @@ qrencode, xdg-utils and gdbus (and for the window PyGObject with GTK 4) yourself
 # the newest release that has the tarball, whatever it is.
 release_url() {
   local beta=$1
-  if [[ -n ${FERRY_DOWNLOAD_URL:-} ]]; then
-    echo "$FERRY_DOWNLOAD_URL"
-  elif (( ! beta )); then
+  if (( ! beta )); then
     echo "https://github.com/$REPO/releases/latest/download/$ASSET"
   else
-    curl -fsSL "https://api.github.com/repos/$REPO/releases?per_page=20" | python3 -c '
+    "${CURL[@]}" -fsSL "https://api.github.com/repos/$REPO/releases?per_page=20" | python3 -c '
 import json, sys
 for r in json.load(sys.stdin):
     for a in r.get("assets", []):
@@ -163,10 +169,20 @@ fetch() {
     if [[ -n $from ]]; then
       [[ -f $from ]] || fail "no such file: $from"
       cp "$from" "$dest/$ASSET"
+    elif [[ -n ${FERRY_DOWNLOAD_URL:-} ]]; then
+      # A test release, served from wherever (a Mac's http server, a VM's shared folder): only the sha256 it is given
+      # vouches for it, so there is none without one
+      [[ ${FERRY_DOWNLOAD_SHA256:-} =~ ^[0-9a-fA-F]{64}$ ]] \
+        || fail "FERRY_DOWNLOAD_URL needs FERRY_DOWNLOAD_SHA256, the tarball's sha256"
+      say "Downloading Ferry: $FERRY_DOWNLOAD_URL"
+      curl --proto '=https,http,file' -fL --progress-bar -o "$dest/$ASSET" "$FERRY_DOWNLOAD_URL" \
+        || fail "couldn't download $FERRY_DOWNLOAD_URL"
+      [[ $(sha256sum "$dest/$ASSET" | cut -d' ' -f1) == "${FERRY_DOWNLOAD_SHA256,,}" ]] \
+        || fail "$FERRY_DOWNLOAD_URL isn't the file FERRY_DOWNLOAD_SHA256 names (its sha256 differs): not installed"
     else
       url=$(release_url "$beta") || fail "couldn't find a release of Ferry"
       say "Downloading Ferry: $url"
-      curl -fL --progress-bar -o "$dest/$ASSET" "$url" || fail "couldn't download $url"
+      "${CURL[@]}" -fL --progress-bar -o "$dest/$ASSET" "$url" || fail "couldn't download $url"
     fi
     tar -xzf "$dest/$ASSET" -C "$dest" 2>/dev/null || fail "$ASSET isn't a Ferry release"
   fi

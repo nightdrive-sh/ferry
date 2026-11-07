@@ -10,5 +10,20 @@ ExecStart=%h/.local/bin/ferry run
 Restart=on-failure
 RestartSec=3
 
+# Hardening: what a server reached from the tailnet doesn't need, so a flaw in it can't use it either. Only what a
+# user's own manager sets without a namespace (those need unprivileged user namespaces, which some distributions
+# restrict), and only what doesn't break an ordinary app, since everything here is inherited by what the server
+# starts: the hook (~/.config/ferry/hook), and the app xdg-open opens a received file in. So no PrivateTmp (X11's
+# socket is in /tmp, for xclip), no ProtectHome (files go to Downloads), no MemoryDenyWriteExecute (a browser's JIT),
+# no RestrictNamespaces (Flatpak's and browsers' sandboxes).
+# No setuid or file capabilities (sudo, pkexec): a compromised server can't ride a cached sudo
+NoNewPrivileges=yes
+RestrictSUIDSGID=yes
+# Its own HTTP and the tailnet (IP), D-Bus, Wayland, X11 and Tailscale's socket (Unix), and the addresses
+# getaddrinfo asks for (netlink)
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6 AF_NETLINK
+RestrictRealtime=yes
+LockPersonality=yes
+
 [Install]
 WantedBy=default.target

@@ -100,9 +100,10 @@ installs Ferry from here.
   By hand: GNOME shows a notification's buttons only once it is expanded (the arrow in its header); Ubuntu's
   AppIndicator opens the tray's menu on a click and the window on a double click; GNOME Files' Scripts give no
   activation token, so the window they open comes with GNOME's "Ferry is ready".
-  A release to update from can be served without a web server: `FERRY_DOWNLOAD_URL` and `FERRY_RELEASES` take
-  `file:///media/psf/Home/…` addresses. A GNOME polkit dialog doesn't show in `prlctl capture`, and KDE's pictures
-  catch frames half drawn (black): take KDE's with `spectacle -b -n -f -o FILE` inside the session. GDM 50 starts no
+  A release to update from can be served without a web server: `FERRY_DOWNLOAD_URL` (with `FERRY_DOWNLOAD_SHA256`,
+  the tarball's, which install.sh insists on) and `FERRY_RELEASES` take `file:///media/psf/Home/…` addresses. A GNOME
+  polkit dialog doesn't show in `prlctl capture`, and KDE's pictures catch frames half drawn (black): take KDE's with
+  `spectacle -b -n -f -o FILE` inside the session. GDM 50 starts no
   X11 session: for KDE on X11, stop gdm and `startx /usr/bin/startplasma-x11 -- :1 vt3` (with
   `/etc/X11/Xwrapper.config` saying `allowed_users=anybody`, `needs_root_rights=yes`). "Nightdrive Test" (Hyprland, no
   Parallels Tools) is reached over SSH (`internal.md`), behind Nightdrive's lock screen. A machine name new to the

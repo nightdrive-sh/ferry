@@ -62,7 +62,11 @@ ln -sfn /nonexistent/plugins/ferry/bin/ferry "$HOME/.local/bin/ferry"   # the pl
 check "state in $old, nightdrive-ferry.service $(systemctl --user is-active nightdrive-ferry.service)"
 
 step "curl -fsSL …/install.sh | bash"
-curl -fsSL "$RELEASE/install.sh" | FERRY_DOWNLOAD_URL="$RELEASE/ferry-linux.tar.gz" bash
+# A release that isn't GitHub's installs only with its sha256 (install.sh's FERRY_DOWNLOAD_URL)
+export FERRY_DOWNLOAD_URL="$RELEASE/ferry-linux.tar.gz"
+FERRY_DOWNLOAD_SHA256=$(curl -fsSL "$FERRY_DOWNLOAD_URL" | sha256sum | cut -d' ' -f1)
+export FERRY_DOWNLOAD_SHA256
+curl -fsSL "$RELEASE/install.sh" | bash
 
 step "Checks"
 ferry=$HOME/.local/bin/ferry
@@ -123,7 +127,7 @@ bash "$TESTS/api.sh"
 
 step "Installing again (an update)"
 pid=$(systemctl --user show -p MainPID --value ferry.service)
-curl -fsSL "$RELEASE/install.sh" | FERRY_DOWNLOAD_URL="$RELEASE/ferry-linux.tar.gz" bash -s -- --no-packages >/dev/null
+curl -fsSL "$RELEASE/install.sh" | bash -s -- --no-packages >/dev/null
 systemctl --user is-active -q ferry.service || die "ferry.service isn't running after the update"
 [[ $(systemctl --user show -p MainPID --value ferry.service) != "$pid" ]] || die "the update didn't restart the server"
 same "$FIXTURE/vapid.pem" "$new/vapid.pem" || die "the update changed the VAPID key"
