@@ -25,8 +25,8 @@ subscription belongs to the computer it added the page from, so the others ask t
 (/api/relay, /api/relay-push).
 
 A request must name this machine (Host: its tailnet name), so a web page that rebinds its own name to 127.0.0.1 in a
-browser here gets nothing. Anyone logged in to this computer could still reach the local port with made-up headers:
-Ferry trusts the computer's own users, as a single-user desktop does.
+browser here gets nothing. Made-up headers on the local port get another user of this computer nothing either: a
+connection is taken only from tailscaled (root) or this user's own processes, which the kernel says (peers.py).
 
 Kept in STATE: items.json (the box), the files left for the phone (files/), the VAPID key for Web Push (made on the first
 run; python3-cryptography), the phone's push subscriptions, the phones that have used Ferry here (phones.json: the

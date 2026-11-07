@@ -31,7 +31,7 @@ installs Ferry from here.
   then iOS opens the link in Safari: to try `simctl openurl` with the real link at once, build for the simulator with
   `CODE_SIGN_ENTITLEMENTS` pointing to a copy saying `applinks:nightdrive.sh?mode=developer` (read from the site itself).
 - `linux/`: the Linux server, also the `ferry` command: the Python package `ferry/` (a module per part: `config`,
-  `desktop`, `notices`, `idle`, `tailnet`, `store`, `push`, `forget`, `computers`, `server`, `api`, `updates`,
+  `desktop`, `notices`, `idle`, `tailnet`, `store`, `push`, `forget`, `computers`, `server`, `peers`, `api`, `updates`,
   `install`, `terminal`, `cli`), which `bin/ferry` runs from beside it, with no dependency beyond python3-cryptography
   (Web Push). A module reaches another's names through it (`config.STATE`, `notices.notify`), never `from … import`,
   so a test patches a name in the module that defines it (`tests/load.py`'s `owner()`). It runs the desktop's tools

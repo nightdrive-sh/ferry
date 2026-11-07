@@ -18,6 +18,12 @@ Ferry runs only inside a [Tailscale](https://tailscale.com) tailnet, and Tailsca
   answers only the Tailscale user who owns it. Anyone else gets **403**.
 - **The Host must name the computer** (its tailnet name), otherwise **403**. This keeps a page that rebinds its own name
   to 127.0.0.1 out.
+- **Only Tailscale and the computer's user locally.** The headers above can be made up by anything that reaches the
+  local port, so a computer takes a local connection only from Tailscale or the user it runs as, and closes any other
+  without an answer: another user of the same computer gets nothing, whatever it sends. (Tailscale publishes a Unix
+  socket only for root, so the port stays.) Ferry for Linux asks the kernel whose the connection is (`/proc/net/tcp`:
+  root, which tailscaled runs as, or the user's own uid); Ferry for Mac doesn't check yet. The user's own programs are
+  trusted, as they can read Ferry's state anyway.
 - **`X-Ferry: 1`** must be on every `api/` request except `api/file/<id>`, otherwise **403**. The header exists for web
   pages: a cross-site request carrying it would need a CORS preflight, which a computer answers only for a Ferry page on
   another of the owner's computers. A native app sends it and needs no CORS.

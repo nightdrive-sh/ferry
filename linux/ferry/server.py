@@ -8,7 +8,7 @@ import urllib.parse
 import urllib.request
 from http.server import ThreadingHTTPServer
 
-from . import api, computers, config, desktop, forget, idle, notices, outbox, push, store, tailnet, wake
+from . import api, computers, config, desktop, forget, idle, notices, outbox, peers, push, store, tailnet, wake
 
 
 STATIC = {"/manifest.webmanifest": "application/manifest+json", "/sw.js": "text/javascript",
@@ -140,6 +140,14 @@ class Server(ThreadingHTTPServer):
 
     def handle_error(self, request, client_address):
         print(f"connection error: {sys.exc_info()[1]!r}", flush=True)   # a phone gone mid-request
+
+    def verify_request(self, request, client_address):
+        """Only tailscaled's connections and this user's (peers.py): another user of this computer could otherwise
+        make up the headers the API trusts."""
+        if peers.trusted(client_address, self.server_address):
+            return True
+        print(f"refused a local connection from another user (port {client_address[1]})", flush=True)
+        return False
 
 
 def tidy_once():

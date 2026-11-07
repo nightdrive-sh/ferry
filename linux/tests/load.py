@@ -22,3 +22,8 @@ def owner(name):
         if name in vars(m) and not inspect.ismodule(vars(m)[name]):
             return m
     raise AttributeError(name)
+
+# The Mac, where these tests also run, has no /proc/net/tcp to say whose a connection is: the tests that talk to a real
+# server there take every connection as their own (test_peers checks the real thing on Linux)
+if not os.path.exists(peers.TABLE):
+    peers.trusted = lambda client, server, table=None, me=None: True
