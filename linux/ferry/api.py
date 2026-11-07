@@ -13,7 +13,7 @@ import urllib.parse
 import urllib.request
 from http.server import BaseHTTPRequestHandler
 
-from . import bodies, config, desktop, forget, idle, push, server, store, tailnet
+from . import bodies, config, desktop, forget, idle, page, push, server, store, tailnet
 
 
 def handler(app):
@@ -126,9 +126,8 @@ def handler(app):
             if path.startswith("/api/"):
                 self.heard()
             if path == "/":
-                with open(os.path.join(config.WEB, "index.html"), encoding="utf-8") as f:
-                    page = f.read().replace("%BASE%", config.MOUNT + "/")
-                self.send(200, page.encode(), "text/html; charset=utf-8")
+                html = page.html()
+                self.send(200, html.encode(), "text/html; charset=utf-8", page.headers(html))
             elif path in server.STATIC:
                 try:
                     with open(os.path.join(config.WEB, path.lstrip("/")), "rb") as f:
