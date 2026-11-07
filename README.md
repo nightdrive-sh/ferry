@@ -93,6 +93,7 @@ On a Mac with Xcode 27. If `xcode-select` points to the Command Line Tools, pref
 - `cd FerryKit && swift test`: the package's tests, the Mac's server too.
 - `cd linux && python3 -m unittest discover -s tests`: the Linux server's and window's tests. On a Mac, `uv run --no-project --with cryptography python3 -m unittest discover -s tests` brings the module notifications need.
 - `cd relay && composer install && vendor/bin/phpunit`: the relay's tests.
+- `.github/ci/linux.sh`: what CI checks on Linux (shellcheck, the Linux tests, a release build), the same locally. CI (`.github/workflows/ci.yml`) runs it on every push and pull request, with the relay's tests and `swift test`.
 - `linux/tests/containers.sh [ubuntu] [debian] [fedora] [arch]`: installs Ferry with its install script in fresh [OrbStack](https://orbstack.dev) machines, the way a user does, and checks that it runs and answers.
 - `macos/build.sh --debug` builds the Mac app and runs it; `macos/shot.sh` takes a picture of its popover.
 - `ios/uitest.sh` runs the iPhone app's UI tests in the simulator against `tools/mock-ferry.py`. For a look by hand: `python3 tools/mock-ferry.py`, then the app launched with `-mock`.
@@ -101,7 +102,7 @@ On a Mac with Xcode 27. If `xcode-select` points to the Command Line Tools, pref
 The signing identity (team, bundle IDs, App Group) is Ferry's own: to run the apps on your own devices, change them in the Xcode projects.
 
 **Releases** are GitHub Releases tagged `v<version>` (`v<version>-beta.N` for a pre-release), with the same version on every platform:
-- `linux/release.sh [--beta N]` makes the Linux files, `ferry-linux.tar.gz` and `install.sh`. Their names carry no version, so `releases/latest/download/<name>` always finds the latest.
+- `linux/release.sh [--beta N]` makes the Linux files, `ferry-linux.tar.gz`, `install.sh` and `SHA256SUMS` (check a download with `sha256sum -c SHA256SUMS --ignore-missing`). Their names carry no version, so `releases/latest/download/<name>` always finds the latest.
 - `macos/build.sh --release [--beta N]` makes the Mac's `.dmg`, Developer ID signed, notarized and stapled, and its item for the update feed (`docs/mac-releases.md`). `--dry-run` sends nothing to Apple.
 - `ios/build.sh` uploads the iPhone app to TestFlight; `--archive-only` checks that it archives.
 - Build numbers come from `tools/build-number.sh`: a base plus the commit count, so they only grow.

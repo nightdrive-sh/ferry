@@ -109,6 +109,10 @@ installs Ferry from here.
   Parallels Tools) is reached over SSH (`internal.md`), behind Nightdrive's lock screen. A machine name new to the
   tailnet waits about half a minute for its certificate on the first request (`keep_warm()` asks it at once).
   Without a desktop, GTK 4.14 (Ubuntu 24.04's) runs under Broadway in an OrbStack machine (`gtk4-broadwayd`).
+- CI (`.github/workflows/ci.yml`, on every push and pull request): `.github/ci/linux.sh` in Fedora (bash -n and
+  shellcheck on every shell script, a parse of every Python file, the Linux tests, a release build checked against its
+  SHA256SUMS; run it locally the same way), the relay's phpunit, and `swift test` on a macOS runner. A shellcheck
+  warning fails it: fix it, or `# shellcheck disable=SCxxxx` with the reason.
 - `linux/tests/containers.sh [ubuntu] [debian] [fedora] [arch]`: the install script in fresh OrbStack machines
   (`ferry-test-<distro>`, deleted afterwards unless `--keep`): a Nightdrive computer's Ferry is set up, Ferry is
   installed with `curl … | bash` from a release `linux/release.sh` made and this Mac serves, and `tests/in-container.sh`
@@ -138,7 +142,8 @@ installs Ferry from here.
 - Work happens in `dev`, and `main` is an earlier point of it (`git merge --ff-only dev` at a release). Check the branch
   before committing. The remote is `nightdrive-sh/ferry` on GitHub; pushing is the user's decision.
 - `linux/release.sh [--beta N]` makes a GitHub Release's Linux files in `linux/build/` (`ferry-linux.tar.gz`,
-  `install.sh`); the version is `VERSION` in `linux/ferry/config.py`, with `-beta.N` added in the tarball for a pre-release.
+  `install.sh` and their `SHA256SUMS`, all three uploaded); the version is `VERSION` in `linux/ferry/config.py`, with
+  `-beta.N` added in the tarball for a pre-release.
 - Every platform has the same version (1.0.0), and a release is tagged `v<version>` or `v<version>-beta.N` with the
   Mac `.dmg` and the Linux files as its GitHub Release's assets.
 - `ios/build.sh` uploads to TestFlight and spends a build number (`tools/build-number.sh`: a base

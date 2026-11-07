@@ -84,8 +84,7 @@ tell application "Finder"
 end tell
 APPLESCRIPT
   # Finder writes the .DS_Store when it gets round to it
-  local i
-  for i in 1 2 3 4 5 6 7 8 9 10; do [ -f "$LAYOUT_MOUNT/.DS_Store" ] && break; sleep 1; done
+  for _ in 1 2 3 4 5 6 7 8 9 10; do [ -f "$LAYOUT_MOUNT/.DS_Store" ] && break; sleep 1; done
   [ -f "$LAYOUT_MOUNT/.DS_Store" ] || fail "Finder didn't save the .dmg's window layout"
   rm -rf "$LAYOUT_MOUNT/.fseventsd"
   sync

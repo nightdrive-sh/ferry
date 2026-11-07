@@ -1,0 +1,78 @@
+name: CI
+
+# Shell and Python checks, the Linux server's and app's tests and a release build (.github/ci/linux.sh, which runs the
+# same locally), the push relay's phpunit, and FerryKit's swift test (FerryKit and the Mac's FerryServer). The UI
+# tests (ios/uitest.sh) and the builds that sign stay on the Mac that makes releases.
+on:
+  push:
+    branches: [dev, main]
+  pull_request:
+
+permissions: {}
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    # Fedora, as Nightdrive's CI: its Python is new (what Ferry meets on a current desktop), and ShellCheck and
+    # python3-cryptography come as its signed packages, not as downloads or third-party actions. By tag, not digest:
+    # Fedora's registry drops an old digest within weeks, and this job holds no secret and can write nothing.
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install the tools
+        run: dnf -y -q install git-core python3 python3-cryptography ShellCheck tar gzip findutils
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Check
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          .github/ci/linux.sh
+
+  relay:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    container: registry.fedoraproject.org/fedora:44
+    defaults:
+      run:
+        working-directory: relay
+    steps:
+      - name: Install PHP and Composer
+        run: dnf -y -q install php-cli php-pdo php-xml php-mbstring composer
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test
+        # composer.lock pins phpunit; --no-plugins and --no-scripts, so installing runs nothing from the packages
+        run: |
+          composer install --no-interaction --no-progress --no-plugins --no-scripts
+          vendor/bin/phpunit
+
+  swift:
+    # Free while the repo is public; a private repo pays ten times the Linux rate for macOS minutes
+    runs-on: macos-26
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: FerryKit
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Test
+        # The newest Xcode on the image, as README › Development asks for (the image's default may be an older one)
+        run: |
+          DEVELOPER_DIR=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)/Contents/Developer
+          export DEVELOPER_DIR
+          xcodebuild -version
+          swift test

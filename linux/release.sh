@@ -3,6 +3,7 @@
 #   ferry-linux.tar.gz   ferry/ with bin/ and ferry/ (the command and the server), app/ (the window), web/ (the
 #                        fonts in it, not linked) and systemd/
 #   install.sh           the install script, which downloads the tarball
+#   SHA256SUMS           the sha256 of both, in sha256sum's format
 # Their names carry no version, so https://github.com/nightdrive-sh/ferry/releases/latest/download/<name> always finds
 # the latest. The version is ferry/config.py's VERSION.
 #
@@ -31,7 +32,15 @@ if [[ -n $beta ]]; then
 fi
 find build -name __pycache__ -prune -exec rm -rf {} +
 # No macOS metadata (._ files, extended attributes) for GNU tar to trip over
-COPYFILE_DISABLE=1 tar --no-xattrs --uid 0 --gid 0 -czf build/ferry-linux.tar.gz -C build ferry
+# Files owned by root (0) whoever builds it: bsdtar (the Mac's) says so with --uid, GNU tar (Linux, CI) with --owner
+if tar --version | grep -q GNU; then owner=(--owner=0 --group=0 --numeric-owner); else owner=(--uid 0 --gid 0); fi
+COPYFILE_DISABLE=1 tar --no-xattrs "${owner[@]}" -czf build/ferry-linux.tar.gz -C build ferry
 rm -rf build/ferry
 cp install.sh build/install.sh
-echo "Ferry for Linux $version: linux/build/ferry-linux.tar.gz and linux/build/install.sh (tag v$version${beta:+, a pre-release})"
+# SHA256SUMS goes up with the other two, so anyone can check a download by hand (`sha256sum -c SHA256SUMS
+# --ignore-missing`) and a tool that pins a release (Nightdrive) has the sums from the release itself, not only from
+# GitHub's API. It is sha256sum's own format, made with shasum on the Mac, which has no sha256sum.
+if command -v sha256sum >/dev/null; then sum=(sha256sum); else sum=(shasum -a 256); fi
+(cd build && "${sum[@]}" ferry-linux.tar.gz install.sh > SHA256SUMS)
+echo "Ferry for Linux $version: linux/build/ferry-linux.tar.gz, install.sh and SHA256SUMS (tag v$version${beta:+, a pre-release})"
+cat build/SHA256SUMS

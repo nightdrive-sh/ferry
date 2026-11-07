@@ -6,7 +6,7 @@
 set -euo pipefail
 
 B=http://127.0.0.1:47270
-HOST=ferry-test.tail0.ts.net
+HOST="ferry-test.tail0.ts.net"
 STATE=$HOME/.local/share/ferry
 DOWNLOADS=$HOME/Downloads
 ferry=$HOME/.local/bin/ferry

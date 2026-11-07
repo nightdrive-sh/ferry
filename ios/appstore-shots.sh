@@ -18,6 +18,7 @@ RUNTIME=$(xcrun simctl list runtimes available | sed -n 's/^iOS 26.* - \(com\.ap
 # The App Store's sizes: 6.9" (1320×2868, the one required) and 6.3" (1206×2622)
 SIZES=("6.9:iPhone 17 Pro Max" "6.3:iPhone 17 Pro")
 MADE=()
+# shellcheck disable=SC2154  # d is the loop's own variable, inside the trap's string
 trap 'for d in "${MADE[@]+"${MADE[@]}"}"; do xcrun simctl shutdown "$d" 2>/dev/null || true; xcrun simctl delete "$d" || true; done' EXIT
 
 for entry in "${SIZES[@]}"; do

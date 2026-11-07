@@ -11,7 +11,7 @@
 # Machines are made from scratch as ferry-test-<distro> and deleted afterwards (--keep: left for a look, orb -m …,
 # and for tests/client.sh or tests/api.sh again).
 set -uo pipefail
-cd "$(dirname "$0")/.."
+cd "$(dirname "$0")/.." || exit 1
 
 image() {   # (macOS's bash 3.2 has no associative arrays)
   case $1 in ubuntu) echo ubuntu:noble ;; debian) echo debian:trixie ;; fedora) echo fedora ;; arch) echo arch ;; esac
