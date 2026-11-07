@@ -70,7 +70,7 @@ def handler(app):
         def cors(self):
             """The asking page's origin if it is another of the owner's machines (its Ferry page switched to this one)."""
             origin = self.headers.get("Origin") or ""
-            return origin if origin and app.tailnet.same_owner(origin) else ""
+            return origin if origin and app.tailnet.same_origin(origin) else ""
 
         def gate(self, api):
             """Only the machine's owner, and for the API only a Ferry page: this one, or one on another of the owner's
@@ -238,7 +238,7 @@ def handler(app):
                 elif path == "/api/relay":
                     # The page from the computer at via, switched to this one: notifications go through via
                     via = str(json.loads(self.read_body(8192) or b"{}").get("via", ""))
-                    if not (app.tailnet.same_owner(via) and via.endswith(config.MOUNT + "/")) or via == tailnet.url():
+                    if not app.tailnet.same_base(via) or via == tailnet.url():
                         return self.send(400, "Not a Ferry page of yours")
                     push.relays(lambda r: r.append(via) if via not in r else None)
                     self.send(200, {"ok": True})
@@ -246,7 +246,7 @@ def handler(app):
                     # Another of the owner's computers (Tailscale says who asks) notifies this one's phones about itself
                     msg = json.loads(self.read_body(8192) or b"{}")
                     machine = str(msg.get("machine", ""))
-                    if not app.tailnet.same_owner(machine):
+                    if not app.tailnet.same_base(machine):
                         return self.send(400, "Not a Ferry page of yours")
                     push.push_all(str(msg.get("title", ""))[:200], str(msg.get("body", ""))[:300], machine,
                              device=str(msg.get("device", ""))[:100])

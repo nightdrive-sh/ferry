@@ -29,13 +29,17 @@ Ferry runs only inside a [Tailscale](https://tailscale.com) tailnet, and Tailsca
   another of the owner's computers. A native app sends it and needs no CORS.
 - **CORS, for a Ferry page on another of the owner's computers** (the Linux PWA lists every computer and talks to each
   directly):
-  - **An `Origin`** that is `https://` and names one of the owner's machines gets `Access-Control-Allow-Origin` with
-    that origin, and `Vary: Origin`, on every answer.
+  - **An `Origin`** that is exactly `https://<one of the owner's machines>`, the port Ferry is published on (443, so
+    none written), gets `Access-Control-Allow-Origin` with that origin, and `Vary: Origin`, on every answer. Another
+    port of the same machine is another web app, not Ferry, and is refused like any other site.
   - **A preflight (`OPTIONS`)** from such an origin, by the owner and naming this computer, is answered 204 with
     `Access-Control-Allow-Methods: GET, POST`, `Access-Control-Allow-Headers: X-Ferry, Content-Type` and
     `Access-Control-Max-Age: 600`. Any other preflight gets **403**.
   - **An `api/` request from another site** (`Sec-Fetch-Site` other than `same-origin` or `none`, a missing one counting
     as `same-origin`) gets **403** unless its origin is answered as above.
+  - **The limit:** a browser can't tell paths of one origin apart, so a page served at another path of
+    `https://<machine>` (another `tailscale serve --set-path` on port 443) is the same origin as Ferry's page and gets
+    the API with it. Serve nothing you don't trust at another path of port 443 on your machines.
 - **Mutual trust.** Computers of the same owner trust each other: one may ask another to pass a notification on
   (`api/relay-push`).
 
@@ -244,10 +248,10 @@ reached again, so one with a send waiting for it sends it (› Clients › Sends
 **For web pages only:**
 - `POST api/test-push`: a test notification to this computer's subscriptions. A computer without a page needn't have it
   (404).
-- `POST api/relay {"via": "<base URL>"}`: the page from the computer at `via` switched to this one. `via` must be one of
-  the owner's machines and end in `/ferry/`, and not be this computer, else 400. The computer keeps it.
+- `POST api/relay {"via": "<base URL>"}`: the page from the computer at `via` switched to this one. `via` must be exactly
+  `https://<one of the owner's machines>/ferry/` (no port, no other path), and not this computer, else 400. The computer keeps it.
 - `POST api/relay-push {"title", "body", "machine", "device"}`: another of the owner's computers asks this one to notify
-  its subscriptions about an item on `machine` (its base URL, one of the owner's machines, else 400). `device`, when set,
+  its subscriptions about an item on `machine` (its base URL, exactly as above, else 400). `device`, when set,
   limits it to that phone. Only subscriptions that aren't `direct` get it: the app hears from that computer itself.
 
 A web page's subscription belongs to the computer it subscribed on, and the owner's other computers ask that one to pass

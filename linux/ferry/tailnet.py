@@ -19,13 +19,18 @@ def tailscale_status():
         return {}
 
 
+def origin(host):
+    """A machine's origin where Ferry is published: https://<its tailnet name>, with no port when it is HTTPS's own."""
+    return f"https://{host}{'' if config.HTTPS_PORT == 443 else f':{config.HTTPS_PORT}'}"
+
+
 def url(st=None):
     """The page's address on the tailnet, or "" when Tailscale is off."""
     st = st or tailscale_status()
     name = ((st.get("Self") or {}).get("DNSName") or "").rstrip(".")
     if st.get("BackendState") != "Running" or not name:
         return ""
-    return f"https://{name}{'' if config.HTTPS_PORT == 443 else f':{config.HTTPS_PORT}'}{config.MOUNT}/"
+    return f"{origin(name)}{config.MOUNT}/"
 
 
 def serving():
@@ -93,13 +98,30 @@ class Tailnet:
             self.load(force=True)
         return bool(host) and host == self.me
 
-    def same_owner(self, url):
-        """Whether url (an Origin, a page's address) is on one of the owner's machines."""
-        host = urllib.parse.urlsplit(url).hostname or ""
+    def owners(self, url, path=""):
+        """Whether url is exactly https://<one of the owner's machines> (on HTTPS_PORT, where Ferry is) followed by
+        path: no other port, no user, no other path, so another web app on one of those machines isn't taken for
+        Ferry. (One at another path of Ferry's own port is the same origin to a browser, which no check here can tell
+        apart: docs/protocol.md › Network and trust.)"""
+        try:
+            host = urllib.parse.urlsplit(url).hostname or ""
+        except ValueError:
+            return False
+        if url != origin(host) + path:
+            return False
         self.load()
         if host not in self.hosts:
             self.load(force=True)
-        return url.startswith("https://") and host in self.hosts
+        return host in self.hosts
+
+    def same_origin(self, origin):
+        """Whether an Origin is a Ferry page on one of the owner's machines (CORS, Sec-Fetch-Site)."""
+        return self.owners(origin)
+
+    def same_base(self, url):
+        """Whether url is the base URL of Ferry on one of the owner's machines (api/relay's via, api/relay-push's
+        machine)."""
+        return self.owners(url, config.MOUNT + "/")
 
     def device(self, ip):
         self.load()

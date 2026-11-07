@@ -249,7 +249,10 @@ class Tailnet:
     def for_me(self, host):
         return host == self.me
 
-    def same_owner(self, url):
+    def same_origin(self, origin):
+        return False
+
+    def same_base(self, url):
         return False
 
     def device(self, ip):
