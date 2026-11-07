@@ -106,22 +106,22 @@ class State(unittest.TestCase):
         self.assertEqual(computers.target(computers.devices(STATUS))["id"], "ipad")
 
     def test_forgetting_a_phone_drops_its_subscriptions(self):
-        self.subscribe("https://p/old", "iphone", direct=False)
-        self.subscribe("https://p/app", "iphone")
-        self.subscribe("https://p/ipad", "ipad")
+        self.subscribe("https://push.nightdrive.sh/push/old", "iphone", direct=False)
+        self.subscribe("https://push.nightdrive.sh/push/app", "iphone")
+        self.subscribe("https://push.nightdrive.sh/push/ipad", "ipad")
         forget.decide("iphone", True)
-        self.assertEqual(self.endpoints(), ["https://p/ipad"])
+        self.assertEqual(self.endpoints(), ["https://push.nightdrive.sh/push/ipad"])
 
     def test_a_forgotten_phone_subscribes_in_vain(self):
         forget.decide("iphone", True)
-        self.assertTrue(self.subscribe("https://p/app", "iphone"))   # answered 200 all the same
+        self.assertTrue(self.subscribe("https://push.nightdrive.sh/push/app", "iphone"))   # answered 200 all the same
         self.assertEqual(self.endpoints(), [])
 
     def test_brought_back_it_subscribes_again(self):
         forget.decide("iphone", True, now=lambda: 1.0)
         forget.decide("iphone", False, now=lambda: 2.0)
-        self.subscribe("https://p/app", "iphone")
-        self.assertEqual(self.endpoints(), ["https://p/app"])
+        self.subscribe("https://push.nightdrive.sh/push/app", "iphone")
+        self.assertEqual(self.endpoints(), ["https://push.nightdrive.sh/push/app"])
 
     def test_a_forget_while_subscribing_wins(self):   # the check and the write are apart: the forget lands between
         real = push.subscriptions
@@ -133,13 +133,13 @@ class State(unittest.TestCase):
             return real(change)
         push.subscriptions = racing
         try:
-            self.subscribe("https://p/app", "iphone")
+            self.subscribe("https://push.nightdrive.sh/push/app", "iphone")
         finally:
             push.subscriptions = real
         self.assertEqual(self.endpoints(), [])
 
     def test_learning_from_another_computer(self):
-        self.subscribe("https://p/app", "iphone")
+        self.subscribe("https://push.nightdrive.sh/push/app", "iphone")
         self.assertTrue(forget.learn_forgotten([entry("iphone", 50.0), entry("studio", 50.0)]))
         self.assertEqual(forget.forgotten_ids(), {"iphone", "studio"})
         self.assertEqual(self.endpoints(), [])   # learnt elsewhere, the subscriptions go here too
@@ -191,26 +191,26 @@ class OneDirectSubscription(unittest.TestCase):   # 1644: an app installed again
         push.subscribe(push.subscription(sub, device))
 
     def test_a_new_direct_one_replaces_the_devices_old_one(self):
-        self.subscribe("https://relay/1", "iphone")
-        self.subscribe("https://web/pwa", "iphone", direct=False)
-        self.subscribe("https://relay/ipad", "ipad")
-        self.subscribe("https://relay/2", "iphone")
+        self.subscribe("https://push.nightdrive.sh/push/1", "iphone")
+        self.subscribe("https://web.push.apple.com/pwa", "iphone", direct=False)
+        self.subscribe("https://push.nightdrive.sh/push/ipad", "ipad")
+        self.subscribe("https://push.nightdrive.sh/push/2", "iphone")
         self.assertEqual([s["endpoint"] for s in push.subscriptions()],
-                         ["https://web/pwa", "https://relay/ipad", "https://relay/2"])
+                         ["https://web.push.apple.com/pwa", "https://push.nightdrive.sh/push/ipad", "https://push.nightdrive.sh/push/2"])
 
     def test_the_same_endpoint_again_replaces_it(self):
-        self.subscribe("https://relay/1", "iphone")
-        self.subscribe("https://relay/1", "iphone")
+        self.subscribe("https://push.nightdrive.sh/push/1", "iphone")
+        self.subscribe("https://push.nightdrive.sh/push/1", "iphone")
         self.assertEqual(len(push.subscriptions()), 1)
 
     def test_a_page_replaces_no_direct_one(self):
-        self.subscribe("https://relay/1", "iphone")
-        self.subscribe("https://web/pwa", "iphone", direct=False)
+        self.subscribe("https://push.nightdrive.sh/push/1", "iphone")
+        self.subscribe("https://web.push.apple.com/pwa", "iphone", direct=False)
         self.assertEqual(len(push.subscriptions()), 2)
 
     def test_an_unnamed_device_replaces_nothing(self):   # "your phone" could be anyone's
-        self.subscribe("https://relay/1", "your phone")
-        self.subscribe("https://relay/2", "your phone")
+        self.subscribe("https://push.nightdrive.sh/push/1", "your phone")
+        self.subscribe("https://push.nightdrive.sh/push/2", "your phone")
         self.assertEqual(len(push.subscriptions()), 2)
 
 

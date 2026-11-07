@@ -249,10 +249,14 @@ check "api/clear?to=phone: what was left for the phones (the iPad's too) and the
 expect 200 "api/clear with no direction" ask -X POST "$B/api/clear"
 
 step "API: notifications"
-ep=https://127.0.0.1:9/push/one   # nothing listens: a notification fails at once, and stays here
+ep=https://127.0.0.1/push/one   # FERRY_PUSH_HOSTS (in-container.sh); nothing listens: a notification fails at once
 sub='"keys": {"p256dh": "BNcRdreALRFXTkOOUHK1EtK2wtaz5Ry4YfYCA_0QTpQtUbVlUls0VJXg7A8u-Ts1XbjhazAkj7I99e8QcYP7DkM", "auth": "tBHItJI5svbpez7KI4CCXg"}'
 expect 400 "api/subscribe over http" ask -H "Content-Type: application/json" \
   -d "{\"endpoint\": \"http://127.0.0.1:9/push/one\", $sub}" "$B/api/subscribe"
+for bad in https://192.168.1.1/push/one https://127.0.0.1:9/push/one; do
+  expect 400 "api/subscribe to $bad, not a push service" ask -H "Content-Type: application/json" \
+    -d "{\"endpoint\": \"$bad\", $sub}" "$B/api/subscribe"
+done
 expect 400 "api/subscribe without keys" ask -H "Content-Type: application/json" -d "{\"endpoint\": \"$ep\"}" "$B/api/subscribe"
 expect 400 "api/subscribe of a list" ask -H "Content-Type: application/json" -d '[]' "$B/api/subscribe"
 ask -f -H "Content-Type: application/json" -d "{\"endpoint\": \"$ep\", $sub, \"direct\": true}" "$B/api/subscribe" \

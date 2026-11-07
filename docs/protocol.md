@@ -188,7 +188,12 @@ A computer notifies a phone with Web Push (RFC 8030, encrypted per RFC 8291, sig
 whatever the phone is: a web page subscribes with its browser's push service, the iPhone app with Ferry's push relay.
 
 **`POST api/subscribe`** with `{"endpoint", "keys": {"p256dh", "auth"}, "direct"}`.
-- **`endpoint`** must be `https://`. Subscribing the same endpoint again replaces it, so a client may repeat it at any time.
+- **`endpoint`** must be `https://` on the default port, at a push service: Ferry's relay (`push.nightdrive.sh`),
+  `web.push.apple.com`, `fcm.googleapis.com`, `android.googleapis.com`, `*.push.services.mozilla.com` or
+  `*.notify.windows.com` (the Linux server also takes the hosts in `FERRY_PUSH_HOSTS`, to test a relay of one's own).
+  Anything else is answered 400, since the computer would post wherever a subscription told it to. A computer doesn't
+  follow a push service's redirect, and drops a stored subscription that isn't at one of these. Subscribing the same
+  endpoint again replaces it, so a client may repeat it at any time.
 - **`direct: true`** is the app's: it subscribes on every computer, so it hears about each computer's own items from that
   computer. A direct subscription gets no notification passed on by another computer (`api/relay-push`), and while a
   device has one, the computer leaves that device's other subscriptions (the same phone's PWA) quiet. The device is the

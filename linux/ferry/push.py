@@ -14,7 +14,7 @@ import time
 import urllib.parse
 import urllib.request
 
-from . import config, forget, store, tailnet
+from . import config, endpoints, forget, store, tailnet
 
 WAKE_TTL = 3600   # seconds a push service keeps the "awake" push for a phone that is off: later, it says nothing new
 
@@ -185,8 +185,9 @@ def recipients(subs, relayed, device=""):
 
 
 def subscription(sub, device):
-    """The stored form of an api/subscribe body, or None when it isn't a push subscription."""
-    if not (isinstance(sub, dict) and str(sub.get("endpoint", "")).startswith("https://") and
+    """The stored form of an api/subscribe body, or None when it isn't a push subscription (or not at a push service
+    this computer posts to: endpoints.allowed)."""
+    if not (isinstance(sub, dict) and endpoints.allowed(sub.get("endpoint", "")) and
             (sub.get("keys") or {}).get("p256dh") and (sub.get("keys") or {}).get("auth")):
         return None
     entry = {"endpoint": sub["endpoint"], "keys": {"p256dh": sub["keys"]["p256dh"], "auth": sub["keys"]["auth"]},
@@ -221,12 +222,17 @@ def send(subs, content, key, ttl, urgency):
     goes. Whether any took it."""
     gone, took = [], False
     for sub in subs:
+        if not endpoints.allowed(sub.get("endpoint", "")):   # kept from before its push service was checked
+            print(f"push to {urllib.parse.urlsplit(str(sub.get('endpoint', ''))).netloc}: not a push service",
+                  file=sys.stderr)
+            gone.append(sub.get("endpoint"))
+            continue
         try:
             data = encrypt(content, sub["keys"]["p256dh"], sub["keys"]["auth"])
             req = urllib.request.Request(sub["endpoint"], data, method="POST", headers={
                 "Authorization": vapid_auth(key, sub["endpoint"]), "TTL": str(ttl),
                 "Content-Encoding": "aes128gcm", "Content-Type": "application/octet-stream", "Urgency": urgency})
-            urllib.request.urlopen(req, timeout=10).read()
+            endpoints.post(req, timeout=10).read()
             took = True
         except urllib.error.HTTPError as e:
             print(f"push to {urllib.parse.urlsplit(sub['endpoint']).netloc}: {e.code} {e.read()[:200]!r}",

@@ -23,6 +23,8 @@ step "$PRETTY_NAME"
 sudo loginctl enable-linger "$USER"
 for _ in $(seq 50); do systemctl --user show-environment >/dev/null 2>&1 && break; sleep 0.2; done
 systemctl --user show-environment >/dev/null || die "no systemd user session"
+# api.sh's push service is this machine, where nothing listens: the server takes only push services' hosts
+systemctl --user set-environment FERRY_PUSH_HOSTS=127.0.0.1
 
 # An Arch user keeps the system up to date; the image's package lists are old
 if [[ " $ID ${ID_LIKE:-} " == *" arch "* ]]; then sudo pacman -Syu --noconfirm >/dev/null; fi   # archarm too

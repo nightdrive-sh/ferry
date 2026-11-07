@@ -5,9 +5,15 @@
 (On a machine without python3-cryptography: uv run --no-project --with cryptography python3 -m unittest discover -s tests.)
 """
 import json
+import os
 import unittest
+import threading
+import urllib.error
+import urllib.request
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from unittest import mock
 
-from load import config, push
+from load import config, endpoints, push
 
 
 def sub(device, direct=False, endpoint=None):
@@ -97,6 +103,71 @@ class Subscription(unittest.TestCase):
         self.assertIsNone(push.subscription({"endpoint": "http://x/", "keys": {"p256dh": "k", "auth": "a"}}, "d"))
         self.assertIsNone(push.subscription({"endpoint": "https://x/", "keys": {"p256dh": "k"}}, "d"))
         self.assertIsNone(push.subscription([], "d"))
+
+    def test_rejects_an_address_that_isnt_a_push_service(self):   # the computer would post wherever it was told
+        for endpoint in ("https://192.168.1.1/x", "https://127.0.0.1:8080/", "https://router.local/admin",
+                         "https://nightdrive.tail1234.ts.net/ferry/api/clear"):
+            self.assertIsNone(push.subscription({"endpoint": endpoint, "keys": {"p256dh": "k", "auth": "a"}}, "d"))
+
+
+class Endpoints(unittest.TestCase):
+    """The push services an endpoint may be at (endpoints.allowed)."""
+
+    def test_the_browsers_and_the_relay(self):
+        for endpoint in ("https://push.nightdrive.sh/push/x", "https://web.push.apple.com/QGx",
+                         "https://fcm.googleapis.com/fcm/send/abc", "https://updates.push.services.mozilla.com/wpush/v2/a",
+                         "https://wns2-par02p.notify.windows.com/w/?token=a", "https://WEB.PUSH.APPLE.COM/x"):
+            self.assertTrue(endpoints.allowed(endpoint), endpoint)
+
+    def test_nothing_else(self):
+        for endpoint in ("http://web.push.apple.com/x", "https://web.push.apple.com:8443/x",
+                         "https://user@web.push.apple.com/x", "https://web.push.apple.com.evil.example/x",
+                         "https://evilpush.nightdrive.sh/x", "https://push.services.mozilla.com.example/x",
+                         "https://notify.windows.com/x", "https://web.push.apple.com:port/x", "https:///x", "", None, 5):
+            self.assertFalse(endpoints.allowed(endpoint), endpoint)
+
+    def test_a_relay_of_ones_own(self):
+        with mock.patch.dict(os.environ, {endpoints.EXTRA: "relay.example, .test.example"}):
+            self.assertTrue(endpoints.allowed("https://relay.example/push/x"))
+            self.assertTrue(endpoints.allowed("https://a.test.example/push/x"))
+            self.assertFalse(endpoints.allowed("https://other.example/push/x"))
+
+
+class Send(unittest.TestCase):
+    """What send() posts to."""
+
+    def test_a_stored_address_that_isnt_a_push_service_goes(self):   # subscribed before the services were checked
+        kept = [sub("iphone", endpoint="https://192.168.1.1/x")]
+        with mock.patch.object(endpoints, "post", side_effect=AssertionError("posted")), \
+                mock.patch.object(push, "subscriptions", lambda change: change(kept)), \
+                mock.patch("sys.stderr"):
+            self.assertFalse(push.send(list(kept), b"{}", None, 60, "high"))
+        self.assertEqual(kept, [])
+
+    def test_a_redirect_isnt_followed(self):   # a push service answers itself; urllib would follow a 302 elsewhere
+        asked = []
+
+        class Redirect(BaseHTTPRequestHandler):
+            def do_POST(self):
+                asked.append(self.path)
+                self.rfile.read(int(self.headers["Content-Length"]))
+                self.send_response(302)
+                self.send_header("Location", "/elsewhere")
+                self.send_header("Content-Length", "0")
+                self.end_headers()
+
+            def log_message(self, *a):
+                pass
+        server = ThreadingHTTPServer(("127.0.0.1", 0), Redirect)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        req = urllib.request.Request(f"http://127.0.0.1:{server.server_port}/push", b"x", method="POST")
+        with self.assertRaises(urllib.error.HTTPError) as e:
+            endpoints.post(req, timeout=5)
+        self.assertEqual(e.exception.code, 302)
+        e.exception.close()
+        self.assertEqual(asked, ["/push"])
 
 
 if __name__ == "__main__":
