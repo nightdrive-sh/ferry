@@ -256,8 +256,11 @@ extension HTTPResponse {
                 return n == 1 ? Data(repeating: byte, count: 10) : nil
             }
         }
-        async let a = r.call("POST", "/api/upload?name=IMG_0001.JPG&type=image/jpeg", replacing: [("Content-Length", "20")], body: slowBody(1))
-        async let b = r.call("POST", "/api/upload?name=IMG_0001.JPG&type=image/jpeg", replacing: [("Content-Length", "20")], body: slowBody(2))
+        // Made before the async lets: slowBody captures the local gate, so it can't be sent into a child task itself,
+        // while the HTTPBody it returns is Sendable
+        let bodyA = slowBody(1), bodyB = slowBody(2)
+        async let a = r.call("POST", "/api/upload?name=IMG_0001.JPG&type=image/jpeg", replacing: [("Content-Length", "20")], body: bodyA)
+        async let b = r.call("POST", "/api/upload?name=IMG_0001.JPG&type=image/jpeg", replacing: [("Content-Length", "20")], body: bodyB)
         let names = [await a, await b].compactMap { $0.json["name"] as? String }.sorted()
         #expect(names == ["IMG_0001 (2).JPG", "IMG_0001.JPG"])
         for n in names {

@@ -15,7 +15,7 @@ import Testing
                 return self.ferry.contains(host) ? Probed(url: "https://\(host)/ferry/", name: host.capitalized, id: host, idle: 0) : nil
             }
         }
-        func take() -> [String] { asked.withLock { defer { $0 = [] }; return $0.sorted() } }
+        func take() -> [String] { asked.withLock { a in defer { a = [] }; return a.sorted() } }
     }
 
     @Test func asksOnlyWhenDue() async {

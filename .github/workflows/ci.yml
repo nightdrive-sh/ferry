@@ -41,10 +41,8 @@ jobs:
     permissions:
       contents: read
     container: registry.fedoraproject.org/fedora:44
-    defaults:
-      run:
-        working-directory: relay
     steps:
+      # No job-wide working-directory: this step runs before the checkout, when relay/ doesn't exist yet
       - name: Install PHP and Composer
         run: dnf -y -q install php-cli php-pdo php-xml php-mbstring composer
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -52,6 +50,7 @@ jobs:
           persist-credentials: false
       - name: Test
         # composer.lock pins phpunit; --no-plugins and --no-scripts, so installing runs nothing from the packages
+        working-directory: relay
         run: |
           composer install --no-interaction --no-progress --no-plugins --no-scripts
           vendor/bin/phpunit
