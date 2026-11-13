@@ -44,6 +44,24 @@ import Testing
         #expect(r.consumed == 19)   // "GET" is the next request's
     }
 
+    /// docs/protocol.md › api/upload: a size is digits only. Int64("-1") is -1 and Int64("+5") is 5.
+    @Test func sizesAreDigitsOnly() throws {
+        func framing(_ cl: String) throws -> BodyFraming {
+            try #require(try HTTPHead.parse(Data("POST /api/upload HTTP/1.1\r\nContent-Length: \(cl)\r\n\r\n".utf8))).head.framing
+        }
+        #expect(try framing("5") == .length(5))
+        #expect(try framing("0") == BodyFraming.none)
+        for bad in ["-1", "+5", "-0", "5x", "0x5", "1_0", "", "1234567890123456"] {
+            #expect(throws: HTTPError.malformed, "\(bad)") { try framing(bad) }
+        }
+        for bad in ["+5", "-0", "-5", "0x5", "123456789"] {
+            var d = ChunkedDecoder()
+            #expect(throws: HTTPError.malformed, "\(bad)") { try d.feed(Data("\(bad)\r\nhello\r\n0\r\n\r\n".utf8)) }
+        }
+        var d = ChunkedDecoder()
+        #expect(try d.feed(Data("A\r\n0123456789\r\n0\r\n\r\n".utf8)).bytes.count == 10)
+    }
+
     @Test func malformedHeadThrows() {
         #expect(throws: HTTPError.malformed) { try HTTPHead.parse(Data("GARBAGE\r\n\r\n".utf8)) }
         #expect(throws: HTTPError.tooBig) { try HTTPHead.parse(Data(repeating: UInt8(ascii: "a"), count: 70_000)) }

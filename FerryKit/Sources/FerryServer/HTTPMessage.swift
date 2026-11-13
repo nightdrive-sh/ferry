@@ -95,9 +95,18 @@ public struct HTTPHead: Sendable, Equatable {
         get throws(HTTPError) {
             if let te = headers["Transfer-Encoding"], te.lowercased().contains("chunked") { return .chunked }
             guard let cl = headers["Content-Length"] else { return .none }
-            guard let n = Int64(cl), n >= 0 else { throw .malformed }
+            guard let n = Self.size(cl, digits: 15, radix: 10) else { throw .malformed }
             return n == 0 ? .none : .length(n)
         }
+    }
+
+    /// A size of digits only (docs/protocol.md › api/upload): Int64(_:) also takes a sign, "+5" or "-0", and a negative
+    /// size would count against the bytes a body has left
+    static func size(_ s: some StringProtocol, digits: Int, radix: Int) -> Int64? {
+        let ok = !s.isEmpty && s.count <= digits && s.unicodeScalars.allSatisfy {
+            $0.isASCII && (radix == 16 ? $0.properties.isASCIIHexDigit : ("0"..."9").contains($0))
+        }
+        return ok ? Int64(s, radix: radix) : nil
     }
 }
 
@@ -137,8 +146,9 @@ public struct ChunkedDecoder: Sendable {
                 switch state {
                 case .size:
                     let hex = text.split(separator: ";", maxSplits: 1).first.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
-                    guard let size = Int(hex, radix: 16), size >= 0 else { throw .malformed }
-                    state = size == 0 ? .trailer : .data(size)
+                    // 8 hex digits: a chunk under 4 GiB, as bin/ferry reads it
+                    guard let size = HTTPHead.size(hex, digits: 8, radix: 16) else { throw .malformed }
+                    state = size == 0 ? .trailer : .data(Int(size))
                 case .dataEnd:
                     guard text.isEmpty else { throw .malformed }
                     state = .size

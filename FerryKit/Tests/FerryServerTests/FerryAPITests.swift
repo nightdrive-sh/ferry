@@ -16,9 +16,10 @@ struct APIRig {
     let phones: Phones
     let api: FerryAPI
 
-    init() throws {
+    init(_ configure: (inout ServerConfig) -> Void = { _ in }) throws {
         var config = ServerConfig(state: state)
         config.port = 0
+        configure(&config)
         box = Box(state: state, keepDays: 7, clock: clock.function)
         pusher = Pusher(state: state, key: try VAPIDKey.load(orCreateIn: state), config: config, outbound: outbound)
         forgotten = Forgotten(state: state, clock: clock.function)
@@ -227,6 +228,56 @@ extension HTTPResponse {
         let full = await upload(r, "name=a.bin", Data([1, 2, 3]))
         #expect(full.status == 507)
         #expect(full.bodyText == "Not enough space on the computer")
+    }
+
+    /// A chunked body says no size first, so its limit is found partway: 413, as for a Content-Length over it
+    @Test func uploadTooBigPartway() async throws {
+        let r = try APIRig { $0.maxFile = 20 }
+        let res = await r.call("POST", "/api/upload?name=a.bin", replacing: [("Transfer-Encoding", "chunked")],
+                               body: pieces(3, of: 8))
+        #expect(res.status == 413)
+        #expect(res.bodyText == "Too big: 20 B at most")
+        #expect(try FileManager.default.contentsOfDirectory(atPath: r.system.downloads.path).isEmpty)
+        #expect(await r.box.items().isEmpty)
+    }
+
+    /// The disk filling up while a file arrives (a chunked body, or uploads side by side): 507 partway
+    @Test func diskFillsPartway() async throws {
+        let r = try APIRig { $0.freeCheck = 16 }
+        let looked = Mutex(0)
+        let body = pieces(4, of: 8) { n in
+            if n == 1 { r.system.set(free: (2 << 30) - 1) }   // after the first piece, below minFree
+            looked.withLock { $0 = n }
+        }
+        let res = await r.call("POST", "/api/upload?name=a.bin", replacing: [("Transfer-Encoding", "chunked")], body: body)
+        #expect(res.status == 507)
+        #expect(res.bodyText == "Not enough space on the computer")
+        #expect(looked.withLock { $0 } == 2)   // looked at after 16 bytes, not at the end
+        #expect(try FileManager.default.contentsOfDirectory(atPath: r.system.downloads.path).isEmpty)
+        #expect(await r.box.items().isEmpty)
+    }
+
+    @Test func freeSpaceLookedAtOnlyEveryFreeCheck() async throws {
+        let r = try APIRig { $0.freeCheck = 16 }
+        let body = pieces(3, of: 8) { n in if n == 1 { r.system.set(free: 0) } }
+        // 24 bytes: one look, after 16, and that look sees the disk full
+        let res = await r.call("POST", "/api/upload?name=a.bin", replacing: [("Transfer-Encoding", "chunked")], body: body)
+        #expect(res.status == 507)
+        r.system.set(free: 100 << 30)
+        let small = await r.call("POST", "/api/upload?name=b.bin", replacing: [("Transfer-Encoding", "chunked")],
+                                 body: pieces(1, of: 8) { _ in r.system.set(free: 0) })
+        #expect(small.status == 200)   // under freeCheck: only the look at the start
+    }
+
+    /// count pieces of size bytes; given(n) runs as piece n (from 1) is handed out
+    func pieces(_ count: Int, of size: Int, given: @escaping @Sendable (Int) -> Void = { _ in }) -> HTTPBody {
+        let step = Mutex(0)
+        return HTTPBody {
+            let n = step.withLock { s in s += 1; return s }
+            guard n <= count else { return nil }
+            given(n)
+            return Data(repeating: UInt8(n), count: size)
+        }
     }
 
     @Test func brokenUpload() async throws {   // Review Focus 2

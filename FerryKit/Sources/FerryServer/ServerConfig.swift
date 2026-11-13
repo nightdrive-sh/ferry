@@ -18,6 +18,9 @@ public struct ServerConfig: Sendable {
     public var pushPayload = 2600
     /// Bytes left free on the disk: an upload that would go below this is refused
     public var minFree: Int64 = 2 << 30
+    /// Bytes of an upload between its looks at the free space: a chunked body says no size first, and uploads run
+    /// side by side
+    public var freeCheck: Int64 = 64 << 20
     /// Seconds within which files from a device share one notification
     public var groupNotify: TimeInterval = 20
     /// Input within this many seconds counts as "in use" (idle 0), as the Linux desktop counts idle only after a minute

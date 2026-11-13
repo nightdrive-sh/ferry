@@ -264,7 +264,9 @@ public struct FerryAPI: Sendable {
     }
 
     func upload(_ req: HTTPRequest) async -> HTTPResponse {
-        let n = Int64(req.headers["Content-Length"] ?? "") ?? 0
+        // The server refused a size that isn't digits before this (docs/protocol.md › api/upload); chunked is 0 here
+        var n: Int64 = 0
+        if case .length(let length)? = try? req.head.framing { n = length }
         if n > config.maxFile { return .text(413, "Too big: \(Self.human(config.maxFile)) at most") }
         let dest = system.downloads
         try? FileManager.default.createDirectory(at: dest, withIntermediateDirectories: true)
@@ -281,16 +283,27 @@ public struct FerryAPI: Sendable {
         let out = FileHandle(fileDescriptor: fd, closeOnDealloc: true)
         var size: Int64 = 0
         do {
+            var checked: Int64 = 0
             while let chunk = try await req.body.next() {
                 size += Int64(chunk.count)
                 if size > config.maxFile { throw HTTPError.tooBig }
                 try out.write(contentsOf: chunk)
+                // A chunked upload says no size at the start, and uploads run side by side: the free space is looked
+                // at again as the file grows
+                if size - checked >= config.freeCheck {
+                    checked = size
+                    if let free = system.freeSpace(at: dest), free < config.minFree { throw UploadError.noSpace }
+                }
             }
             try out.close()
         } catch {
             try? out.close()
             try? FileManager.default.removeItem(at: part)
-            return .text(400, "Upload failed")
+            switch error {
+            case HTTPError.tooBig: return .text(413, "Too big: \(Self.human(config.maxFile)) at most")
+            case UploadError.noSpace: return .text(507, "Not enough space on the computer")
+            default: return .text(400, "Upload failed")
+            }
         }
         if FileManager.default.fileExists(atPath: path.path) { path = FileNames.unique(path) }   // taken meanwhile
         guard Darwin.rename(part.path, path.path) == 0 else {
@@ -364,6 +377,11 @@ public struct FerryAPI: Sendable {
         }
         return ""
     }
+}
+
+private enum UploadError: Error {
+    /// The disk would have less than minFree left: 507
+    case noSpace
 }
 
 /// Files from devices within a few seconds of each other share one notification.
