@@ -31,8 +31,10 @@ public struct TailscaleCommand: TailscaleCLI {
         try await run(["serve", "status", "--json"], timeout: 5).stdout
     }
 
-    public func serve(on: Bool, port: UInt16) async -> (ok: Bool, output: String) {
-        let args = on ? ["serve", "--bg", "--https=443", "--set-path=/ferry", "http://127.0.0.1:\(port)"]
+    public func serve(on: Bool, target: String) async -> (ok: Bool, output: String) {
+        // The target holds the key (LocalKey), and macOS lets any user read a running command's arguments: this one
+        // runs for a moment, and Tailscale's CLI takes a node's own serve target no other way
+        let args = on ? ["serve", "--bg", "--https=443", "--set-path=/ferry", target]
             : ["serve", "--https=443", "--set-path=/ferry", "off"]
         guard let r = try? await run(args, timeout: 30) else { return (false, "Tailscale isn't installed") }
         return (r.status == 0, String(decoding: r.stdout + r.stderr, as: UTF8.self))

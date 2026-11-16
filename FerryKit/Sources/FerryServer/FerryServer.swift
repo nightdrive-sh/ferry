@@ -14,6 +14,8 @@ public actor FerryServer {
     let system: any FerrySystem
     let tailscale: any TailscaleCLI
     let outbound: any Outbound
+    /// The secret path tailscale serve is pointed at: no other local user can reach the server
+    nonisolated let key: LocalKey
     let clock: @Sendable () -> TimeInterval
     let tailnet: Tailnet
     let box: Box
@@ -48,6 +50,7 @@ public actor FerryServer {
         self.system = system
         self.tailscale = tailscale
         self.outbound = outbound
+        key = try LocalKey.load(orCreateIn: config.state)
         self.clock = clock
         tailnet = Tailnet(cli: tailscale, clock: clock)
         let (receivedChanged, changed) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
@@ -66,7 +69,7 @@ public actor FerryServer {
         let api = FerryAPI(config: config, system: system, tailnet: tailnet, box: box, pusher: pusher, forgotten: forgotten, phones: usedBy,
                            clock: clock,
                            machines: { [weak self] in await self?.machines() ?? [] })
-        let http = HTTPServer(port: config.port) { await api.handle($0) }
+        let http = HTTPServer(port: config.port, key: key) { await api.handle($0) }
         let port: UInt16
         do {
             port = try await http.start()
@@ -136,7 +139,8 @@ public actor FerryServer {
             let st = TailnetView(statusJSON: try await tailscale.status())
             guard st.running else { return .tailscaleOff }
             let serve = try await tailscale.serveStatus()
-            return Publisher.serving(statusJSON: serve, port: port, httpsPort: config.httpsPort, mount: config.mount)
+            return Publisher.serving(statusJSON: serve, target: key.target(port: port), httpsPort: config.httpsPort,
+                                     mount: config.mount)
                 ? .published : .notPublished
         } catch is TailscaleNotFound {
             return .tailscaleMissing
@@ -160,7 +164,7 @@ public actor FerryServer {
         let state = await served()
         guard state != .tailscaleMissing, state != .tailscaleOff else { return state }
         if on, state == .published { return state }
-        let (ok, output) = await tailscale.serve(on: on, port: port)
+        let (ok, output) = await tailscale.serve(on: on, target: key.target(port: port))
         guard ok else {
             let problem = Publisher.problem(output)
             if on { refused = problem }

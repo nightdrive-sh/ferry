@@ -130,7 +130,7 @@ import Testing
         await r.server.pusher.subscribe(Subscription(endpoint: "https://web.push.apple.com/page",
                                                      keys: .init(p256dh: keys.p256dh, auth: keys.authString),
                                                      device: "ipad", time: 0, direct: nil))
-        await r.tailscale.set(serve: Data(#"{"Web":{"macbook.tail1234.ts.net:443":{"Handlers":{"/ferry":{"Proxy":"http://127.0.0.1:47270"}}}}}"#.utf8))
+        _ = await r.tailscale.serve(on: true, target: r.server.key.target(port: 47270))
         await r.server.announceAwake()
         let pushes = await r.outbound.sent.filter { $0.request.httpMethod == "POST" && $0.request.url?.path().hasPrefix("/push") == true
             || $0.request.url?.host() == "web.push.apple.com" }

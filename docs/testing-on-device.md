@@ -247,6 +247,12 @@ With the Mac app running (`macos/build.sh --debug`), Tailscale on the Mac and th
   space…", not a connection error (the Mac answers before reading the body, through Tailscale's proxy).
 - [ ] `curl -H 'Tailscale-User-Login: someone@else' -H 'X-Ferry: 1' https://<mac>.<tailnet>.ts.net/ferry/api/ping` from
   the Mac: still answered as the owner, since tailscale serve replaces the header (Ferry's gate rests on that).
+- [ ] Updated from a Ferry without `serve-key`: it publishes itself again at once (`tailscale serve status` shows `/ferry`
+  going to `http://127.0.0.1:47270/<key>`) and the iPhone goes on working. From another user account of the Mac, with
+  each Tailscale (App Store, standalone, open-source tailscaled): `curl -H 'Host: <mac>.<tailnet>.ts.net' -H
+  'Tailscale-User-Login: <owner>' -H 'X-Ferry: 1' http://127.0.0.1:47270/api/items` gets an empty reply (curl: (52)),
+  and a standard (not administrator) account can't read the key with `tailscale serve status` (the open-source
+  tailscaled lets it: protocol.md says so).
 - [ ] A file from the iPhone opened from its notification: macOS treats it as downloaded (Gatekeeper asks for an app or
   script document).
 

@@ -137,7 +137,7 @@ struct ServerRig {
         #expect(await r.server.publish(true) == .published)   // already on: not asked again
         let calls = await r.tailscale.serveCalls
         #expect(calls.count == 1)
-        #expect(calls.first?.on == true && calls.first?.port == 47270)
+        #expect(calls.first?.on == true && calls.first?.target == "http://127.0.0.1:47270/\(r.server.key.value)")
         #expect(await r.server.publish(false) == .stopped)
         await r.tailscale.set(serveAnswer: (false, "Serve is not enabled on your tailnet.\nhttps://login.tailscale.com/f/serve?node=abc\n"))
         #expect(await r.server.publish(true) == .problem(message: "https://login.tailscale.com/f/serve?node=abc",
@@ -217,6 +217,25 @@ struct ServerRig {
         #expect(await r.server.box.items().map(\.id) == ["cccccccccccc"])   // the other direction stays
     }
 
+    /// Published as Ferry was before it had a key: the server would close every request, so it is published again at
+    /// launch, with the key
+    @Test func publishedWithoutTheKeyIsPublishedAgain() async throws {
+        let r = try ServerRig()
+        await r.tailscale.set(serve: Data(#"{"Web":{"macbook.tail1234.ts.net:443":{"Handlers":{"/ferry":{"Proxy":"http://127.0.0.1:47270"}}}}}"#.utf8))
+        #expect(await r.server.publishState() == .notPublished)
+        #expect(await r.server.publishIfWanted() == .published)
+        #expect(await r.tailscale.serveCalls.map(\.target) == [r.server.key.target(port: 47270)])
+    }
+
+    @Test func theKeyStays() async throws {
+        let r = try ServerRig()
+        let again = try FerryServer(config: ServerConfig(state: r.state), system: r.system, tailscale: r.tailscale,
+                                    outbound: r.outbound)
+        #expect(again.key == r.server.key)   // published once, not again at every launch
+        let attributes = try FileManager.default.attributesOfItem(atPath: r.state.appending(path: "serve-key").path)
+        #expect(attributes[.posixPermissions] as? Int == 0o600)
+    }
+
     @Test func problemStaysUntilTryAgain() async throws {   // Final review: refresh re-ran serve every 5 s
         let r = try ServerRig()
         let refused = (ok: false, output: "Serve is not enabled on your tailnet.\nhttps://login.tailscale.com/f/serve?node=abc\n")
@@ -256,7 +275,7 @@ struct ServerRig {
         // Stopped in Settings, then turned on outside Ferry: it says what is true
         await r.tailscale.set(serveAnswer: (true, ""))
         #expect(await r.server.publish(false) == .stopped)
-        _ = await r.tailscale.serve(on: true, port: 47270)
+        _ = await r.tailscale.serve(on: true, target: r.server.key.target(port: 47270))
         #expect(await r.server.publishState() == .published)
     }
 
@@ -277,5 +296,5 @@ struct ServerRig {
 struct MissingTailscale: TailscaleCLI {
     func status() async throws -> Data { throw TailscaleNotFound() }
     func serveStatus() async throws -> Data { throw TailscaleNotFound() }
-    func serve(on: Bool, port: UInt16) async -> (ok: Bool, output: String) { (false, "") }
+    func serve(on: Bool, target: String) async -> (ok: Bool, output: String) { (false, "") }
 }

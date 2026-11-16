@@ -6,8 +6,8 @@ public protocol TailscaleCLI: Sendable {
     func status() async throws -> Data
     /// `tailscale serve status --json`
     func serveStatus() async throws -> Data
-    /// Publishes 127.0.0.1:port at /ferry on the tailnet, or stops that
-    func serve(on: Bool, port: UInt16) async -> (ok: Bool, output: String)
+    /// Publishes target (`http://127.0.0.1:<port>/<key>`, LocalKey) at /ferry on the tailnet, or stops that
+    func serve(on: Bool, target: String) async -> (ok: Bool, output: String)
 }
 
 /// The tailnet as `tailscale status --json` shows it, reduced to what Ferry needs (bin/ferry's `Tailnet.load()`).

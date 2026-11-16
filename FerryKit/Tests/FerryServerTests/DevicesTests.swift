@@ -77,12 +77,17 @@ import Testing
 
 @Suite struct PublisherTests {
     @Test func servingParse() {
-        let on = Data(#"{"TCP":{"443":{"HTTPS":true}},"Web":{"macbook.tail1234.ts.net:443":{"Handlers":{"/ferry":{"Proxy":"http://127.0.0.1:47270"}}}}}"#.utf8)
-        #expect(Publisher.serving(statusJSON: on, port: 47270, httpsPort: 443, mount: "/ferry"))
-        #expect(!Publisher.serving(statusJSON: on, port: 47271, httpsPort: 443, mount: "/ferry"))
-        #expect(!Publisher.serving(statusJSON: on, port: 47270, httpsPort: 8443, mount: "/ferry"))
-        #expect(!Publisher.serving(statusJSON: Data("{}".utf8), port: 47270, httpsPort: 443, mount: "/ferry"))
-        #expect(!Publisher.serving(statusJSON: Data("No serve config".utf8), port: 47270, httpsPort: 443, mount: "/ferry"))
+        let target = "http://127.0.0.1:47270/K3y"
+        let on = Data(#"{"TCP":{"443":{"HTTPS":true}},"Web":{"macbook.tail1234.ts.net:443":{"Handlers":{"/ferry":{"Proxy":"http://127.0.0.1:47270/K3y"}}}}}"#.utf8)
+        #expect(Publisher.serving(statusJSON: on, target: target, httpsPort: 443, mount: "/ferry"))
+        #expect(!Publisher.serving(statusJSON: on, target: "http://127.0.0.1:47271/K3y", httpsPort: 443, mount: "/ferry"))
+        #expect(!Publisher.serving(statusJSON: on, target: "http://127.0.0.1:47270/other", httpsPort: 443, mount: "/ferry"))
+        #expect(!Publisher.serving(statusJSON: on, target: target, httpsPort: 8443, mount: "/ferry"))
+        #expect(!Publisher.serving(statusJSON: Data("{}".utf8), target: target, httpsPort: 443, mount: "/ferry"))
+        #expect(!Publisher.serving(statusJSON: Data("No serve config".utf8), target: target, httpsPort: 443, mount: "/ferry"))
+        // As Ferry published itself before the key: not Ferry's any more, so it is published again
+        let old = Data(#"{"Web":{"macbook.tail1234.ts.net:443":{"Handlers":{"/ferry":{"Proxy":"http://127.0.0.1:47270"}}}}}"#.utf8)
+        #expect(!Publisher.serving(statusJSON: old, target: target, httpsPort: 443, mount: "/ferry"))
     }
 
     @Test func problemLink() {

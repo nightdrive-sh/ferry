@@ -5,7 +5,8 @@ import Testing
 
 /// The iPhone app's own client against the Mac's server on localhost: the protocol checked from both ends. The fixture
 /// names this machine 127.0.0.1, so the Host check passes for http://127.0.0.1:<port>, and the session adds the headers
-/// tailscale serve would (the owner's login, the iPhone's address).
+/// tailscale serve would (the owner's login, the iPhone's address). The machine's address has the key where tailscale
+/// serve puts the mount's requests.
 @Suite(.serialized) struct ClientServerTests {
     struct Pair {
         let system: FakeSystem
@@ -23,8 +24,23 @@ import Testing
             let session = URLSessionConfiguration.ephemeral
             session.httpAdditionalHeaders = ["Tailscale-User-Login": "jari@example.com", "X-Forwarded-For": "100.64.0.4"]
             return Pair(system: system, server: server, client: HTTPBackend(configuration: session),
-                        machine: URL(string: "http://127.0.0.1:\(port)/ferry/")!)
+                        machine: URL(string: "http://127.0.0.1:\(port)/\(server.key.value)/")!)
         }
+    }
+
+    /// Another user of the Mac, with every header right but without the key, gets the connection closed (FER-03)
+    @Test func madeUpHeadersWithoutTheKeyGetNothing() async throws {
+        let p = try await Pair.make()
+        defer { Task { await p.server.stop() } }
+        let base = try #require(URLComponents(url: p.machine, resolvingAgainstBaseURL: false))
+        for path in ["/ferry/api/items", "/api/items", "/x\(base.path.dropFirst())api/items"] {
+            var req = URLRequest(url: URL(string: "http://127.0.0.1:\(base.port!)\(path)")!)
+            req.setValue("1", forHTTPHeaderField: "X-Ferry")
+            req.setValue("jari@example.com", forHTTPHeaderField: "Tailscale-User-Login")
+            let answer = try? await URLSession(configuration: .ephemeral).data(for: req)
+            #expect(answer == nil, "\(path)")
+        }
+        #expect(try await p.client.ping(p.machine) == "MacBook")   // the key's way still works
     }
 
     let iphone = Device(id: "iphone", name: "iphone", kind: .phone, online: true, inUse: false)

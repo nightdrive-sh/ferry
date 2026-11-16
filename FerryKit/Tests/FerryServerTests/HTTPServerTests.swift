@@ -42,7 +42,7 @@ enum RawClient {
 
 @Suite struct HTTPServerTests {
     func server(_ handler: @escaping @Sendable (HTTPRequest) async -> HTTPResponse) async throws -> (HTTPServer, UInt16) {
-        let s = HTTPServer(port: 0, handler: handler)
+        let s = HTTPServer(port: 0, key: nil, handler: handler)
         return (s, try await s.start())
     }
 
@@ -143,5 +143,54 @@ enum RawClient {
             if !s.hasPrefix("127.") { return s }
         }
         return nil
+    }
+}
+
+/// With a key, only requests at its path are answered, and the handler sees the path without it (LocalKey, FER-03)
+@Suite struct HTTPServerKeyTests {
+    let key = LocalKey(String(repeating: "k", count: 43))
+
+    final class Seen: Sendable {
+        let paths = Mutex<[String]>([])
+        func withLock<R>(_ f: (inout [String]) -> R) -> R { paths.withLock { f(&$0) } }
+    }
+
+    func server() async throws -> (HTTPServer, UInt16, Seen) {
+        let seen = Seen()
+        let s = HTTPServer(port: 0, key: key) { req in
+            seen.withLock { $0.append(req.path) }
+            return .text(200, req.path)
+        }
+        return (s, try await s.start(), seen)
+    }
+
+    @Test func theKeysPathIsAnswered() async throws {
+        let (s, port, seen) = try await server()
+        defer { Task { await s.stop() } }
+        let (data, _) = try await URLSession(configuration: .ephemeral)
+            .data(from: URL(string: "http://127.0.0.1:\(port)/\(key.value)/api/items?x=1")!)
+        #expect(String(decoding: data, as: UTF8.self) == "/api/items")
+        #expect(seen.withLock { $0 } == ["/api/items"])
+    }
+
+    @Test func withoutItTheConnectionIsClosedUnanswered() async throws {
+        let (s, port, seen) = try await server()
+        defer { Task { await s.stop() } }
+        let a = try await RawClient.exchange(Data("GET /api/items HTTP/1.1\r\nHost: macbook.tail1234.ts.net\r\nTailscale-User-Login: jari@example.com\r\nX-Ferry: 1\r\n\r\n".utf8),
+                                             port: port)
+        #expect(a.data.isEmpty)
+        #expect(a.closed)
+        #expect(seen.withLock { $0 }.isEmpty)
+    }
+
+    @Test func aKeylessRequestAfterAGoodOneEndsTheConnection() async throws {
+        let (s, port, seen) = try await server()
+        defer { Task { await s.stop() } }
+        let a = try await RawClient.exchange(Data("GET /\(key.value)/a HTTP/1.1\r\nHost: x\r\n\r\nGET /b HTTP/1.1\r\nHost: x\r\n\r\nGET /\(key.value)/c HTTP/1.1\r\nHost: x\r\n\r\n".utf8),
+                                             port: port)
+        let text = String(decoding: a.data, as: UTF8.self)
+        #expect(text.components(separatedBy: "HTTP/1.1 200 OK").count == 2)
+        #expect(a.closed)
+        #expect(seen.withLock { $0 } == ["/a"])
     }
 }

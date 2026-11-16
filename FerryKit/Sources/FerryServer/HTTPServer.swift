@@ -65,13 +65,16 @@ public struct HTTPRequest: Sendable {
 /// HTTP/1.1 on 127.0.0.1 only. `tailscale serve` keeps its connection open and sends request after request on it.
 public actor HTTPServer {
     private let port: UInt16
+    /// The path every request must start with, taken off before the handler sees it (LocalKey); nil for none
+    private let key: LocalKey?
     private let handler: @Sendable (HTTPRequest) async -> HTTPResponse
     private var listener: NWListener?
     private var connections: [ObjectIdentifier: NWConnection] = [:]
     private let queue = DispatchQueue(label: "fi.feature.ferry.server")
 
-    public init(port: UInt16, handler: @escaping @Sendable (HTTPRequest) async -> HTTPResponse) {
+    public init(port: UInt16, key: LocalKey?, handler: @escaping @Sendable (HTTPRequest) async -> HTTPResponse) {
         self.port = port
+        self.key = key
         self.handler = handler
     }
 
@@ -122,11 +125,16 @@ public actor HTTPServer {
         let reader = ConnectionReader(conn)
         let handler = self.handler
         while true {
-            let head: HTTPHead
+            var head: HTTPHead
             let framing: BodyFraming
             do {
                 guard let h = try await reader.head() else { return }
                 head = h
+                // Not from Tailscale or this user: closed without a word, before anything else is read
+                if let key {
+                    guard let path = key.strip(head.path) else { return }
+                    head.path = path
+                }
                 framing = try h.framing
             } catch {
                 _ = try? await reader.write(HTTPResponse.text(400, "Bad request"), close: true, headOnly: false)

@@ -23,7 +23,7 @@ actor FakeTailscale: TailscaleCLI {
     var serveData = Data("{}".utf8)
     var serveAnswer = (ok: true, output: "")
     private(set) var statusCalls = 0
-    private(set) var serveCalls: [(on: Bool, port: UInt16)] = []
+    private(set) var serveCalls: [(on: Bool, target: String)] = []
 
     init(_ fixture: String = "tailscale-status") {
         statusData = try? Fixture.data(fixture)
@@ -41,10 +41,10 @@ actor FakeTailscale: TailscaleCLI {
     func serveStatus() async throws -> Data { serveData }
 
     /// Like tailscale serve: when it succeeds, serve status shows the proxy afterwards
-    func serve(on: Bool, port: UInt16) async -> (ok: Bool, output: String) {
-        serveCalls.append((on, port))
+    func serve(on: Bool, target: String) async -> (ok: Bool, output: String) {
+        serveCalls.append((on, target))
         if serveAnswer.ok {
-            serveData = on ? Data(#"{"Web":{"macbook.tail1234.ts.net:443":{"Handlers":{"/ferry":{"Proxy":"http://127.0.0.1:\#(port)"}}}}}"#.utf8)
+            serveData = on ? Data(#"{"Web":{"macbook.tail1234.ts.net:443":{"Handlers":{"/ferry":{"Proxy":"\#(target)"}}}}}"#.utf8)
                 : Data("{}".utf8)
         }
         return serveAnswer

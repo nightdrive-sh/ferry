@@ -10,10 +10,12 @@ installs Ferry from here.
 - `FerryKit/`: everything that isn't UI (models, HTTPBackend, machine list and target rule, labels, FerryModel). No
   UIKit in it, so a Mac app can use it and `swift test` runs it on the Mac.
 - `FerryKit/Sources/FerryServer/`: the computer's side of the protocol, which the Mac app runs. HTTP on 127.0.0.1:47270
-  (its own small HTTP/1.1 over `NWListener`, no dependency), the box, Tailscale, Web Push, the other computers. The
-  system's parts are behind `FerrySystem`, `TailscaleCLI` and `Outbound`, so `swift test` drives it with fakes, and
-  `ClientServerTests` runs the iPhone app's `HTTPBackend` against it. `TailscaleCommand` (macOS only) is the real
-  `tailscale`, run from fixed paths, since an app opened at login has no shell PATH.
+  (its own small HTTP/1.1 over `NWListener`, no dependency), answering only at the secret path `tailscale serve` is
+  pointed at (`LocalKey`, `serve-key` in its state: macOS won't say whose a local connection is), the box, Tailscale,
+  Web Push, the other computers. The system's parts are behind `FerrySystem`, `TailscaleCLI` and `Outbound`, so
+  `swift test` drives it with fakes, and `ClientServerTests` runs the iPhone app's `HTTPBackend` against it.
+  `TailscaleCommand` (macOS only) is the real `tailscale`, run from fixed paths, since an app opened at login has no
+  shell PATH.
 - `macos/`: the Mac app (macOS 26, bundle ID `fi.feature.ferry.mac`, no sandbox: it runs `tailscale serve`). An
   `NSStatusItem` with an `NSPopover` of SwiftUI, not `MenuBarExtra`: files are dropped on the icon, a dot on it says
   something arrived, and the popover says when it opens. `MenuModel` refreshes only while the popover is open; closed,
@@ -83,8 +85,9 @@ installs Ferry from here.
   `-notifications denied|notDetermined`, `-showDropTiles YES`. `macos/shot.sh <out.png>` takes a picture of the popover
   (the terminal needs Screen Recording). Debug builds are signed with the team's Apple Development certificate, not
   ad hoc, so a permission given once (Downloads, notifications) holds across rebuilds. On launch the app publishes
-  itself with `tailscale serve --bg --https=443 --set-path=/ferry http://127.0.0.1:47270`, which stays on after it
-  quits; `tailscale serve --https=443 --set-path=/ferry off` takes it off.
+  itself with `tailscale serve --bg --https=443 --set-path=/ferry http://127.0.0.1:47270/<key>`, which stays on after
+  it quits (to ask the server by hand, put the key from `serve-key` in front of the path); `tailscale serve
+  --https=443 --set-path=/ferry off` takes it off.
 - `cd linux && python3 -m unittest discover -s tests`: the Linux server's tests (stdlib unittest). On the Mac, with
   `uv run --no-project --with cryptography` in front, for the push tests. Desktop parts are tested against fakes (a
   pretend Wayland compositor, recorded commands); real desktops are for the Parallels VMs.

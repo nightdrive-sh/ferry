@@ -27,7 +27,7 @@ import Testing
     }
 
     @Test func serveKeepsTheMessages() async throws {
-        let r = await TailscaleCommand(path: try fake(exit: 1)).serve(on: true, port: 47270)
+        let r = await TailscaleCommand(path: try fake(exit: 1)).serve(on: true, target: "http://127.0.0.1:47270/K3y")
         #expect(!r.ok)
         #expect(r.output.contains("Serve is not enabled on your tailnet."))
     }

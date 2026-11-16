@@ -22,8 +22,13 @@ Ferry runs only inside a [Tailscale](https://tailscale.com) tailnet, and Tailsca
   local port, so a computer takes a local connection only from Tailscale or the user it runs as, and closes any other
   without an answer: another user of the same computer gets nothing, whatever it sends. (Tailscale publishes a Unix
   socket only for root, so the port stays.) Ferry for Linux asks the kernel whose the connection is (`/proc/net/tcp`:
-  root, which tailscaled runs as, or the user's own uid); Ferry for Mac doesn't check yet. The user's own programs are
-  trusted, as they can read Ferry's state anyway.
+  root, which tailscaled runs as, or the user's own uid). macOS shows a process only its own sockets, and Tailscale's
+  extensions can't reach a Unix socket, so Ferry for Mac publishes itself at a secret path instead
+  (`http://127.0.0.1:47270/<key>`, the key made once and kept in its state, readable only by the user) and closes a
+  connection whose request doesn't start with it. Whoever can read Tailscale's serve configuration can read the key: on
+  a Mac its administrators, who could become root anyway, and with the open-source tailscaled any user of the Mac. So
+  can another user watching the Mac's processes at the moment Ferry publishes itself, since the key is on `tailscale
+  serve`'s command line for that moment. The user's own programs are trusted, as they can read Ferry's state anyway.
 - **`X-Ferry: 1`** must be on every `api/` request except `api/file/<id>`, otherwise **403**. The header exists for web
   pages: a cross-site request carrying it would need a CORS preflight, which a computer answers only for a Ferry page on
   another of the owner's computers. A native app sends it and needs no CORS.

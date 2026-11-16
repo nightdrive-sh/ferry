@@ -19,8 +19,10 @@ public enum PublishState: Sendable, Equatable {
 }
 
 enum Publisher {
-    /// bin/ferry's `serving()`: tailscale serve publishes 127.0.0.1:port at mount on the HTTPS port
-    static func serving(statusJSON: Data, port: UInt16, httpsPort: Int, mount: String) -> Bool {
+    /// bin/ferry's `serving()`: tailscale serve publishes target (127.0.0.1:port and the key, LocalKey) at mount on the
+    /// HTTPS port. One without the key, as Ferry published itself before it had one, isn't Ferry's: the server closes
+    /// its requests, and Ferry publishes itself again.
+    static func serving(statusJSON: Data, target: String, httpsPort: Int, mount: String) -> Bool {
         struct Handler: Decodable { var Proxy: String? }
         struct Web: Decodable { var Handlers: [String: Handler]? }
         struct Config: Decodable { var Web: [String: Web]? }
@@ -28,7 +30,7 @@ enum Publisher {
         return (cfg.Web ?? [:]).contains { host, web in
             let proxy = web.Handlers?[mount]?.Proxy ?? ""
             let trimmed = proxy.hasSuffix("/") ? String(proxy.dropLast()) : proxy
-            return host.hasSuffix(":\(httpsPort)") && trimmed.hasSuffix("127.0.0.1:\(port)")
+            return host.hasSuffix(":\(httpsPort)") && trimmed == target
         }
     }
 
