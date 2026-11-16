@@ -32,13 +32,41 @@ import Testing
         #expect(await t.baseURL() == URL(string: "https://macbook.tail1234.ts.net/ferry/"))
     }
 
-    @Test func sameOwner() async {
+    /// Another of the owner's machines is trusted only as Ferry: its origin on Ferry's port and its base URL at
+    /// /ferry/, not another web app on another port of it (FER-08, as linux/tests/test_origins.py)
+    @Test func aFerryPageOnAnotherOfTheOwnersMachines() async {
         let t = Tailnet(cli: FakeTailscale(), clock: TestClock().function)
-        #expect(await t.sameOwner("https://nightdrive.tail1234.ts.net"))
-        #expect(await t.sameOwner("https://nightdrive.tail1234.ts.net/ferry/"))
-        #expect(await !t.sameOwner("http://nightdrive.tail1234.ts.net"))
-        #expect(await !t.sameOwner("https://stranger.tail1234.ts.net"))
-        #expect(await !t.sameOwner(""))
+        #expect(await t.sameOrigin("https://nightdrive.tail1234.ts.net"))
+        #expect(await t.sameOrigin("https://macbook.tail1234.ts.net"))
+        #expect(await t.sameOrigin("https://nightdrive.tail1234.ts.net:8443", httpsPort: 8443))
+    }
+
+    @Test func anotherPortUserOrSchemeIsAnotherApp() async {
+        let t = Tailnet(cli: FakeTailscale(), clock: TestClock().function)
+        for o in ["https://nightdrive.tail1234.ts.net:8443", "https://nightdrive.tail1234.ts.net:443",
+                  "http://nightdrive.tail1234.ts.net", "https://me@nightdrive.tail1234.ts.net",
+                  "https://nightdrive.tail1234.ts.net/", "https://NIGHTDRIVE.tail1234.ts.net",
+                  "https://nightdrive.tail1234.ts.net:bad", "https://[nightdrive", "", "null",
+                  "https://nightdrive%2Etail1234.ts.net"] {
+            #expect(await !t.sameOrigin(o), "\(o)")
+        }
+        #expect(await !t.sameOrigin("https://nightdrive.tail1234.ts.net", httpsPort: 8443))
+    }
+
+    @Test func anotherUsersMachineIsntTheOwners() async {
+        let t = Tailnet(cli: FakeTailscale(), clock: TestClock().function)
+        #expect(await !t.sameOrigin("https://stranger.tail1234.ts.net"))
+        #expect(await !t.sameBase("https://stranger.tail1234.ts.net/ferry/"))
+    }
+
+    @Test func aBaseURLIsFerrysOwn() async {
+        let t = Tailnet(cli: FakeTailscale(), clock: TestClock().function)
+        #expect(await t.sameBase("https://nightdrive.tail1234.ts.net/ferry/"))
+        for u in ["https://nightdrive.tail1234.ts.net/ferry", "https://nightdrive.tail1234.ts.net/other/ferry/",
+                  "https://nightdrive.tail1234.ts.net:8443/ferry/", "https://nightdrive.tail1234.ts.net/ferry/?x",
+                  "https://nightdrive.tail1234.ts.net/ferry/#x", "https://nightdrive.tail1234.ts.net"] {
+            #expect(await !t.sameBase(u), "\(u)")
+        }
     }
 
     @Test func refreshesOnAMiss() async {

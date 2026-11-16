@@ -77,9 +77,9 @@ public struct FerryAPI: Sendable {
 
     // MARK: Who may ask
 
-    /// The asking page's origin when it is on another of the owner's machines (the Linux PWA switched to this one)
+    /// The asking page's origin when it is Ferry on another of the owner's machines (the Linux PWA switched to this one)
     func cors(_ req: HTTPRequest) async -> String? {
-        guard let origin = req.headers["Origin"], !origin.isEmpty, await tailnet.sameOwner(origin) else { return nil }
+        guard let origin = req.headers["Origin"], !origin.isEmpty, await tailnet.sameOrigin(origin, httpsPort: config.httpsPort) else { return nil }
         return origin
     }
 
@@ -243,7 +243,7 @@ public struct FerryAPI: Sendable {
             // The page from the computer at via, switched to this one: notifications go through via
             let via = try await json(req, limit: 8192)["via"] as? String ?? ""
             let own = await tailnet.baseURL(mount: config.mount, httpsPort: config.httpsPort)?.absoluteString
-            guard await tailnet.sameOwner(via), via.hasSuffix(config.mount + "/"), via != own else {
+            guard await tailnet.sameBase(via, mount: config.mount, httpsPort: config.httpsPort), via != own else {
                 return .text(400, "Not a Ferry page of yours")
             }
             await pusher.addRelay(via)
@@ -252,7 +252,7 @@ public struct FerryAPI: Sendable {
             // Another of the owner's computers notifies this one's phones about itself
             let msg = try await json(req, limit: 8192)
             let machine = msg["machine"] as? String ?? ""
-            guard await tailnet.sameOwner(machine) else { return .text(400, "Not a Ferry page of yours") }
+            guard await tailnet.sameBase(machine, mount: config.mount, httpsPort: config.httpsPort) else { return .text(400, "Not a Ferry page of yours") }
             let own = await tailnet.baseURL(mount: config.mount, httpsPort: config.httpsPort)?.absoluteString ?? ""
             await pusher.push(title: String((msg["title"] as? String ?? "").prefix(200)),
                               body: String((msg["body"] as? String ?? "").prefix(300)), machine: machine,

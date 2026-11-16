@@ -121,10 +121,29 @@ public actor Tailnet {
         return await check { !$0.me.isEmpty && $0.me == name }
     }
 
-    /// Whether url (an Origin, a page's or computer's address) is on one of the owner's machines
-    public func sameOwner(_ url: String) async -> Bool {
-        guard url.hasPrefix("https://"), let host = URLComponents(string: url)?.host else { return false }
+    /// A machine's origin where Ferry is published: `https://<its tailnet name>`, with no port when it is HTTPS's own
+    static func origin(_ host: String, httpsPort: Int) -> String {
+        "https://\(host)\(httpsPort == 443 ? "" : ":\(httpsPort)")"
+    }
+
+    /// Whether url is exactly `https://<one of the owner's machines>` (on httpsPort, where Ferry is) followed by path:
+    /// no other port, no user, no other path, so another web app on one of those machines isn't taken for Ferry. (One
+    /// at another path of Ferry's own port is the same origin to a browser, which no check here can tell apart:
+    /// docs/protocol.md › Network and trust.)
+    private func owners(_ url: String, path: String, httpsPort: Int) async -> Bool {
+        guard let host = URLComponents(string: url)?.host, !host.isEmpty,
+              url == Self.origin(host, httpsPort: httpsPort) + path else { return false }
         return await check { $0.hosts.contains(host) }
+    }
+
+    /// Whether an Origin is a Ferry page on one of the owner's machines (CORS, Sec-Fetch-Site)
+    public func sameOrigin(_ origin: String, httpsPort: Int = 443) async -> Bool {
+        await owners(origin, path: "", httpsPort: httpsPort)
+    }
+
+    /// Whether url is the base URL of Ferry on one of the owner's machines (api/relay's via, api/relay-push's machine)
+    public func sameBase(_ url: String, mount: String = "/ferry", httpsPort: Int = 443) async -> Bool {
+        await owners(url, path: mount + "/", httpsPort: httpsPort)
     }
 
     /// The asking device's short tailnet name from its IP, "" when unknown
@@ -138,6 +157,6 @@ public actor Tailnet {
     public func baseURL(mount: String = "/ferry", httpsPort: Int = 443) async -> URL? {
         let v = await view()
         guard v.running, !v.me.isEmpty else { return nil }
-        return URL(string: "https://\(v.me)\(httpsPort == 443 ? "" : ":\(httpsPort)")\(mount)/")
+        return URL(string: Self.origin(v.me, httpsPort: httpsPort) + mount + "/")
     }
 }

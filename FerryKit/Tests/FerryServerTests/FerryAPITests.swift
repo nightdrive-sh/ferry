@@ -111,6 +111,20 @@ extension HTTPResponse {
         #expect(badPre.bodyText == "Not allowed")
     }
 
+    /// Another web app on another port of one of the owner's machines isn't Ferry's page (FER-08)
+    @Test func anotherAppOnTheOwnersMachineIsNot() async throws {
+        let r = try APIRig()
+        let app = "https://nightdrive.tail1234.ts.net:8443"
+        for site in ["same-site", "cross-site"] {
+            let pre = await r.call("OPTIONS", "/api/items", replacing: [("Origin", app), ("X-Ferry", nil), ("Sec-Fetch-Site", site)])
+            #expect(pre.status == 403)
+            #expect(pre.header("Access-Control-Allow-Origin") == nil)
+            let get = await r.call("GET", "/api/items", replacing: [("Origin", app), ("Sec-Fetch-Site", site)])
+            #expect(get.status == 403)
+            #expect(get.header("Access-Control-Allow-Origin") == nil)
+        }
+    }
+
     // MARK: Calls
 
     @Test func pingAndItems() async throws {
@@ -416,11 +430,17 @@ extension HTTPResponse {
         #expect(stranger.bodyText == "Not a Ferry page of yours")
         #expect(await r.call("POST", "/api/relay", json: #"{"via":"https://macbook.tail1234.ts.net/ferry/"}"#).status == 400)
         #expect(await r.call("POST", "/api/relay", json: #"{"via":"https://nightdrive.tail1234.ts.net/other/"}"#).status == 400)
+        #expect(await r.call("POST", "/api/relay", json: #"{"via":"https://nightdrive.tail1234.ts.net:8443/ferry/"}"#).status == 400)
+        #expect(await r.call("POST", "/api/relay", json: #"{"via":"https://nightdrive.tail1234.ts.net/other/ferry/"}"#).status == 400)
         let push = await r.call("POST", "/api/relay-push",
                                 json: #"{"title":"Nightdrive","body":"hi","machine":"https://nightdrive.tail1234.ts.net/ferry/"}"#)
         #expect(push.status == 200)
         let bad = await r.call("POST", "/api/relay-push", json: #"{"title":"x","body":"y","machine":"https://stranger.tail1234.ts.net/ferry/"}"#)
         #expect(bad.status == 400)
+        let port = await r.call("POST", "/api/relay-push", json: #"{"title":"x","body":"y","machine":"https://nightdrive.tail1234.ts.net:8443/ferry/"}"#)
+        #expect(port.status == 400)
+        let origin = await r.call("POST", "/api/relay-push", json: #"{"title":"x","body":"y","machine":"https://nightdrive.tail1234.ts.net"}"#)
+        #expect(origin.status == 400)
     }
 
     // MARK: The rest
