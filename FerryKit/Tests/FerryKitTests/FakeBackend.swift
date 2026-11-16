@@ -136,3 +136,13 @@ func model(_ fake: FakeBackend, machines: [(URL, String)] = [(nd, "Nightdrive"),
 func tempCache() -> FileCache {
     FileCache(directory: FileManager.default.temporaryDirectory.appending(path: "cache-\(UUID().uuidString)"))
 }
+
+/// Waits until ok is true, for at most within: a busy CI runner takes longer than a test's few milliseconds
+@MainActor func eventually(within: Duration = .seconds(3), _ ok: () async -> Bool) async -> Bool {
+    let end = ContinuousClock.now + within
+    while ContinuousClock.now < end {
+        if await ok() { return true }
+        try? await Task.sleep(for: .milliseconds(10))
+    }
+    return await ok()
+}

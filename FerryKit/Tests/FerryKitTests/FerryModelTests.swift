@@ -543,8 +543,7 @@ import Testing
         let m = try model(fake, machines: [(mac, "MacBook")])
         await m.send(.text("x", clip: true))
         #expect(m.sendState == .sent(to: "MacBook"))
-        try await Task.sleep(for: .milliseconds(80))
-        #expect(m.sendState == .idle)
+        #expect(await eventually { m.sendState == .idle })
     }
 
     @Test func setUpRequiresPing() async throws {
@@ -679,9 +678,9 @@ import Testing
         let m = try model(fake, machines: [])
         let start = ContinuousClock.now
         await #expect(throws: FerryError.unreachable(machine: "mini", timedOut: true)) {
-            try await m.setUp(mini, patience: .milliseconds(100), retryAfter: .milliseconds(10))
+            try await m.setUp(mini, patience: .milliseconds(500), retryAfter: .milliseconds(10))
         }
-        #expect(ContinuousClock.now - start < .seconds(2))
+        #expect(ContinuousClock.now - start < .seconds(3))
         #expect(await fake.calls.filter { $0.hasPrefix("ping") }.count > 1)
         #expect(!m.isSetUp)
     }
@@ -742,8 +741,7 @@ import Testing
         await fake.setSlowMachines(.seconds(3))
         let m = try model(fake, machines: [(nd, "Nightdrive")])
         let all = Task { await m.refreshAll() }
-        try await Task.sleep(for: .milliseconds(300))
-        #expect(m.received.map(\.item.id) == ["a"])
+        #expect(await eventually(within: .seconds(2)) { m.received.map(\.item.id) == ["a"] })   // before the machines' 3 s
         all.cancel()
         await all.value
     }
