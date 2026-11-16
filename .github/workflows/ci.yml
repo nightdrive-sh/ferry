@@ -74,4 +74,6 @@ jobs:
           DEVELOPER_DIR=$(ls -d /Applications/Xcode_*.app | sort -V | tail -1)/Contents/Developer
           export DEVELOPER_DIR
           xcodebuild -version
-          swift test
+          # Apart, so the server's sockets and files don't slow FerryKit's timing tests beside them
+          swift test --skip FerryServerTests
+          swift test --filter FerryServerTests

@@ -177,10 +177,10 @@ private let b = URL(string: "https://b.tail1.ts.net/ferry/")!
     @Test func orderFreezesAtTheFirstAnswer() async throws {
         let m = await share([text])
         await fake.set(b, name: "B", idle: 0)          // B is the one in use, but answers late
-        await fake.setSlow(b, .milliseconds(200))
+        await fake.setSlow(b, .seconds(1))
         #expect(m.rows.isEmpty || m.rows.map(\.machine.name) == ["A", "B"])
         let run = Task { await m.start() }
-        try await Task.sleep(for: .milliseconds(80))
+        #expect(await eventually(within: .milliseconds(800)) { m.state == .choosing })   // A answered, B not yet
         #expect(m.rows.map(\.machine.name) == ["A", "B"])
         #expect(m.rows.map(\.subtitle) == ["used 10 min ago", "asking…"])
         #expect(m.state == .choosing)                  // A can be tapped already
@@ -191,9 +191,9 @@ private let b = URL(string: "https://b.tail1.ts.net/ferry/")!
 
     @Test func tapsThatDoNothing() async throws {
         let m = await share([text])
-        await fake.setSlow(b, .milliseconds(200))
+        await fake.setSlow(b, .seconds(1))
         let run = Task { await m.start() }
-        try await Task.sleep(for: .milliseconds(80))
+        #expect(await eventually(within: .milliseconds(800)) { m.state == .choosing })
         await m.pick(b)                                // still asking
         #expect(m.state == .choosing)
         #expect(await sends().isEmpty)
@@ -222,9 +222,9 @@ private let b = URL(string: "https://b.tail1.ts.net/ferry/")!
 
     @Test func lateAnswerAfterAPickSendsNothingMore() async throws {
         let m = await share([text])
-        await fake.setSlow(b, .milliseconds(200))
+        await fake.setSlow(b, .seconds(1))
         let run = Task { await m.start() }
-        try await Task.sleep(for: .milliseconds(80))
+        #expect(await eventually(within: .milliseconds(800)) { m.state == .choosing })
         await m.pick(a)
         #expect(m.state == .sent(to: "A"))
         await run.value                                 // B answers after the send
@@ -278,7 +278,7 @@ private let b = URL(string: "https://b.tail1.ts.net/ferry/")!
         await fake.setDown([b])
         let text = text
         let m = ShareModel(machines: known([a, b]), load: {
-            try? await Task.sleep(for: .milliseconds(150))   // a big video copied out of Photos
+            try? await Task.sleep(for: .milliseconds(600))   // a big video copied out of Photos
             return [text]
         }, ask: fake, send: fake, files: files)
         #expect(m.rows.map(\.machine.name) == ["A", "B"])
