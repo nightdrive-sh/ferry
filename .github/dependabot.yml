@@ -1,0 +1,28 @@
+# Version updates as pull requests to dev, where all work happens (AGENTS.md › Branches): the actions CI uses (pinned by
+# commit, with the version in a comment, which Dependabot updates both of) and the relay's Composer packages
+# (composer.lock; only phpunit and what it needs, nothing the relay runs in production). Security updates are on in
+# the repo's settings besides. Swift's Package.resolved (Sparkle) has no Dependabot support for Xcode projects, and
+# the Linux server uses only the distribution's packages.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    # A release only a few days old isn't taken yet: a hijacked one is usually found and pulled by then
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ["*"]
+  - package-ecosystem: composer
+    directory: /relay
+    target-branch: dev
+    schedule:
+      interval: monthly
+    cooldown:
+      default-days: 7
+    groups:
+      composer:
+        patterns: ["*"]

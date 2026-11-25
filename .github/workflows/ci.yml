@@ -1,8 +1,9 @@
 name: CI
 
 # Shell and Python checks, the Linux server's and app's tests and a release build (.github/ci/linux.sh, which runs the
-# same locally), the push relay's phpunit, and FerryKit's swift test (FerryKit and the Mac's FerryServer). The UI
-# tests (ios/uitest.sh) and the builds that sign stay on the Mac that makes releases.
+# same locally), a secret scan of the whole history with gitleaks (.gitleaks.toml), the push relay's phpunit, and
+# FerryKit's swift test (FerryKit and the Mac's FerryServer). The UI tests (ios/uitest.sh), the builds that sign and
+# linux/tests/containers.sh (OrbStack's Linux machines with systemd, on the Mac) stay on the Mac that makes releases.
 on:
   push:
     branches: [dev, main]
@@ -34,6 +35,28 @@ jobs:
         run: |
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           .github/ci/linux.sh
+
+  secrets:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    # gitleaks as Fedora's signed package, as Nightdrive's CI has it: gitleaks' own action needs a licence for an
+    # organisation's repo
+    container: registry.fedoraproject.org/fedora:44
+    steps:
+      - name: Install gitleaks
+        run: dnf -y -q install git-core gitleaks
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # gitleaks reads every commit
+          persist-credentials: false
+      - name: Scan
+        # The values it reports stay out of the log (--redact); .gitleaks.toml's allowlists say why each test fixture
+        # that looks like a secret is harmless
+        run: |
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          gitleaks git . --redact --no-banner --exit-code 1
 
   relay:
     runs-on: ubuntu-24.04

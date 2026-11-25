@@ -93,7 +93,7 @@ On a Mac with Xcode 27. If `xcode-select` points to the Command Line Tools, pref
 - `cd FerryKit && swift test`: the package's tests, the Mac's server too.
 - `cd linux && python3 -m unittest discover -s tests`: the Linux server's and window's tests. On a Mac, `uv run --no-project --with cryptography python3 -m unittest discover -s tests` brings the module notifications need.
 - `cd relay && composer install && vendor/bin/phpunit`: the relay's tests.
-- `.github/ci/linux.sh`: what CI checks on Linux (shellcheck, the Linux tests, a release build), the same locally. CI (`.github/workflows/ci.yml`) runs it on every push and pull request, with the relay's tests and `swift test`.
+- `.github/ci/linux.sh`: what CI checks on Linux (shellcheck, the Linux tests, a release build), the same locally. CI (`.github/workflows/ci.yml`) runs it on every push and pull request, with the relay's tests, `swift test` and a secret scan of the whole history (`gitleaks git .`; `.gitleaks.toml` lists the test fixtures it lets through, and why). Dependabot proposes updates to the actions and the relay's Composer packages (`.github/dependabot.yml`).
 - `linux/tests/containers.sh [ubuntu] [debian] [fedora] [arch]`: installs Ferry with its install script in fresh [OrbStack](https://orbstack.dev) machines, the way a user does, and checks that it runs and answers.
 - `macos/build.sh --debug` builds the Mac app and runs it; `macos/shot.sh` takes a picture of its popover.
 - `ios/uitest.sh` runs the iPhone app's UI tests in the simulator against `tools/mock-ferry.py`. For a look by hand: `python3 tools/mock-ferry.py`, then the app launched with `-mock`.

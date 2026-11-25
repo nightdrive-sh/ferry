@@ -1,0 +1,25 @@
+# gitleaks (CI's secret scan, .github/workflows/ci.yml): its default rules, with the test fixtures and examples that
+# look like secrets but aren't. Each entry says why it is harmless; anything else it finds fails CI.
+# Locally: gitleaks git . (the whole history) or gitleaks dir . (the working tree).
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Test fixtures: a Web Push vector made with a throwaway key (tools/push-vector.py), and the made-up codes and tokens SecretTests and test_secret.py check the secret-hiding rule against"
+paths = [
+  '''(^|/)FerryKit/Tests/FerryKitTests/Fixtures/push-vector\.json$''',
+  '''(^|/)FerryKit/Tests/FerryKitTests/Fixtures/secrets\.json$''',
+]
+
+[[allowlists]]
+description = "Made-up values in tests: the relay tests' token, the Web Push docs' example subscription keys (linux/tests/api.sh) and the App Store screenshots' example clipboard"
+regexes = [
+  '''0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef''',
+  '''tBHItJI5svbpez7KI4CCXg''',
+  '''violet-harbor-42''',
+]
+
+[[allowlists]]
+description = "Not a value: a Swift property's type (let key: P256.Signing.PrivateKey)"
+regexes = ['''P256\.Signing\.PrivateKey''']
