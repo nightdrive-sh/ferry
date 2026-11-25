@@ -2,7 +2,12 @@
 # Installs Ferry on this Linux computer for you (not system-wide), or updates it, and starts it:
 #
 #   curl --proto '=https' --tlsv1.2 -fsSL https://nightdrive.sh/ferry/install | bash
-#   (a redirect to the latest release's install.sh)
+#
+# That address serves a short script of nightdrive.sh's own, which downloads the Ferry release Nightdrive pinned (this
+# script and its tarball) and runs this script with --from that tarball only if both match the sha256 it was built
+# with; options after `bash -s --` are passed on. Ferry then keeps itself up to date (below). Run straight from GitHub,
+# this script downloads the latest release itself:
+#   curl --proto '=https' --tlsv1.2 -fsSL https://github.com/nightdrive-sh/ferry/releases/latest/download/install.sh | bash
 #
 # What it does, in order:
 #   1. Installs what Ferry uses with the distribution's package manager (apt, dnf or pacman, through sudo), only what
