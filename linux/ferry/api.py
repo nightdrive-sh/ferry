@@ -20,6 +20,7 @@ def handler(app):
     class Handler(BaseHTTPRequestHandler):
         protocol_version = "HTTP/1.1"
         server_version = "Ferry"
+        timeout = config.REQUEST_TIMEOUT   # a slow or silent connection doesn't hold its thread for ever (FER-09)
 
         def log_message(self, fmt, *a):
             """The journal's line for a request, without its query: an upload's carries the file's name

@@ -58,7 +58,8 @@ class Tailnet:
         self.phones = set()     # the owner's phones' and tablets' short tailnet names
 
     def load(self, force=False):
-        if not force and time.monotonic() - self.when < 60:
+        """Tailscale's status, read again after a minute, or when forced and the last read is FORCED_RELOAD old."""
+        if time.monotonic() - self.when < (config.FORCED_RELOAD if force else 60):
             return
         st = tailscale_status()
         self.when = time.monotonic()

@@ -9,6 +9,12 @@ PORT = 47270                 # the local server (127.0.0.1 only: tailscale serve
 HTTPS_PORT = 443             # tailscale serve's port on the tailnet name
 MOUNT = "/ferry"             # the page's path there (tailscale serve strips it before the request reaches us)
 VERSION = "1.0.0"
+# A request that isn't the owner's (another login, host, origin or address) reloads Tailscale's status, in case the
+# owner just logged in or a machine just joined, but at most this often: a stranger's requests would otherwise run
+# `tailscale status --json` every time (FER-09)
+FORCED_RELOAD = 5
+# Seconds a connection may stay silent, mid-request or idle between keep-alive requests, before its thread lets it go
+REQUEST_TIMEOUT = 60
 
 
 def state_dir(env=os.environ, home=os.path.expanduser("~")):
