@@ -10,7 +10,7 @@
         "ext-pdo_sqlite": "*"
     },
     "require-dev": {
-        "phpunit/phpunit": "^12"
+        "phpunit/phpunit": "^13"
     },
     "autoload": {
         "classmap": [
