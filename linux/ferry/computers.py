@@ -134,14 +134,16 @@ def set_target(device_id):
         f.write(device_id + "\n")
 
 
-def mark_sent(what, to, error="", waiting=False):
+def mark_sent(what, to, error="", waiting=False, kind=None):
     """What was just sent and to whom, for the menu's "Sent" (it shows the newest for a few seconds), or why a send
-    didn't go (error), so the menu's button stops waiting. waiting: it waits for its computer (outbox)."""
+    didn't go (error), so the menu's button stops waiting. waiting: it waits for its computer (outbox). kind: {kind:
+    text|file, name: the file's name ("" for a text or several files), count}, so the desktop's hook can say what went
+    without the text itself (what has a text's first words)."""
     os.makedirs(config.STATE, mode=0o700, exist_ok=True)
     tmp = os.path.join(config.STATE, "sent.json.tmp")
     with open(tmp, "w") as f:
         json.dump(dict({"time": time.time(), "what": what, "to": to}, **({"error": error} if error else {}),
-                       **({"waiting": True} if waiting else {})), f,
+                       **({"waiting": True} if waiting else {}), **(kind or {})), f,
                   ensure_ascii=False)
     os.replace(tmp, os.path.join(config.STATE, "sent.json"))
     desktop.changed()
@@ -197,16 +199,18 @@ def send(dev, files=None, text=None, clip=False):
         if not files:
             return "failed", "No files to send there"
         what = os.path.basename(files[0]) if len(files) == 1 else f"{len(files)} files"
+        kind = {"kind": "file", "name": what if len(files) == 1 else "", "count": len(files)}
     else:
         if not (text or "").strip():
             return "failed", "Nothing to send"
         what = terminal.oneline(text, 60)
+        kind = {"kind": "text", "name": "", "count": 1}
     if dev["kind"] != "computer":
         if files is not None:
             store.add_files(files, dev["id"])
         else:
             store.add_text(text, dev["id"])
-        mark_sent(what, dev["name"])
+        mark_sent(what, dev["name"], kind=kind)
         return "sent", what
     base = machine_url(dev["id"])
     if not base:
@@ -227,7 +231,7 @@ def send(dev, files=None, text=None, clip=False):
         if dev.get("online", True):
             print(f"send to {base} failed: {e!r}, so it waits", file=sys.stderr)
         outbox.add(dev, files=files, text=text)   # the files it hasn't taken yet
-        mark_sent(what, dev["name"], waiting=True)
+        mark_sent(what, dev["name"], waiting=True, kind=kind)
         return "waiting", what
-    mark_sent(what, dev["name"])
+    mark_sent(what, dev["name"], kind=kind)
     return "sent", what

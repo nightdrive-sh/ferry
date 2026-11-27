@@ -56,7 +56,10 @@ class Outbox(unittest.TestCase):
                                                                               "https://example.com"))
         self.assertAlmostEqual(w["until"] - w["time"], 3 * 86400)
         with open(os.path.join(self.tmp.name, "sent.json")) as f:
-            self.assertTrue(json.load(f)["waiting"])
+            sent = json.load(f)
+        self.assertTrue(sent["waiting"])
+        # What went, for the desktop's hook, but never the text: only "what" has its first words, for the menu
+        self.assertEqual((sent["kind"], sent["name"], sent["count"]), ("text", "", 1))
         self.assertEqual(computers.deliver(STUDIO, text="again"), "")   # the old callers see it as gone
 
     def test_a_computer_that_doesnt_answer_gets_it_later_but_one_that_refuses_is_a_failure(self):
@@ -71,6 +74,9 @@ class Outbox(unittest.TestCase):
         src = self.file("photo.jpg")
         computers.send(STUDIO, files=[src])
         os.remove(src)   # moved or deleted meanwhile: the copy still goes
+        with open(os.path.join(self.tmp.name, "sent.json")) as f:
+            self.assertEqual({k: v for k, v in json.load(f).items() if k in ("kind", "name", "count")},
+                             {"kind": "file", "name": "photo.jpg", "count": 1})
         [e] = outbox.listed()
         self.assertTrue(os.path.exists(e["files"][0]["path"]))
         w = outbox.public(e)
